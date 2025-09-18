@@ -2,18 +2,19 @@
 ## constants
 $FIELD_SYNONYMS = @(
   @('id','identifier','unique id','unique identifier','uuid')
-  @('name','full name','contact name','person'),
+  @('name','full name','contact name','person','names'),
   @('first name','firstname','given name','forename','nombre','prénom','vorname'),
   @('last name','lastname','family name','surname','apellido','nom de famille','nachname'),
   @('title','job title','role','position','puesto','cargo'),
   @('department','dept','division','area','team'),
-  @('email','e-mail','mail','email address','correo','correo electrónico','adresse e-mail'),
+  @('email','e-mail','mail','email address','correo','correo electrónico','adresse e-mail','emails'),
   @('phone','phone number','telephone','telephone number','tel',
     'office phone','work phone','main phone','primary phone','direct phone',
     'mobile','cell','cell phone','mobile phone',"phones",'phone mumbers','telephones',
     'handy','gsm','teléfono','telefone','telefon'),
   @('contact preference','contact type','preferred communication','preferred contact','contact method','pref comms','pref contact'),
   @('gender','sex'),
+  @('password','passwords','pass','secret pass','secret','secret password')
   @('status','stage','relationship','owner','active','inactive'),
   @('computer','workstation','pc','machine','host'),
   @('ip address','ip','workstation ip','primary computer ip'),
@@ -28,6 +29,9 @@ $FIELD_SYNONYMS = @(
   @('fax','fax number')
   @('important','notice','warning','vip','very important person')
 )
+$truthy = '(?ix)\b(?:y|yes|yeah|yep|true|t|on|ok|okay|enable|enabled|active)\b|(?<!\d)1(?!\d)'
+$falsy  = '(?ix)\b(?:n|no|nope|false|f|off|disable|disabled|inactive)\b|(?<!\d)0(?!\d)'
+
 function Normalize-Text {
     param([string]$s)
     if ([string]::IsNullOrWhiteSpace($s)) { return $null }
@@ -53,7 +57,7 @@ function New-SynonymIndex {
         $set = @($SynonymSets[$i])
         if ($set.Count -eq 0) { continue }
 
-        $canon = [string]$set[0]  # canonical = first item (change if you prefer)
+        $canon = [string]$set[0]  # canonical = first item
         $vars  = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
 
         # union of normalized variants for every term in the set
@@ -392,11 +396,14 @@ function Find-RowValueByLabel {
         [object[]]$FieldSynonyms,   # full sets (e.g. $FIELD_SYNONYMS)
         [string[]]$SynonymBag,      # flat bag (e.g. from Get-FieldSynonymsSimple)
         [string]$fieldType,
-        [double]$MinSimilarity = 0.45,
+        [double]$MinSimilarity = 0.925,
         [switch]$ReturnCandidate
     )
 
     if (-not $Row) { return $null }
+    if ($fieldType -and $fieldType -eq "AssetTag"){return $null}
+
+
 
     # Build synonym bag without pipelines
     $bag = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
@@ -440,7 +447,7 @@ function Find-RowValueByLabel {
         $reason = ''
         # label scoring
         if (Test-LabelEquivalent $label $TargetLabel) {
-            $score = 1.00; $reason = 'exact/equivalent'
+            $score = 1.50; $reason = 'exact/equivalent'
         } else {
             $synHit = $false
             if ($bag.Count -gt 0) {
@@ -449,7 +456,7 @@ function Find-RowValueByLabel {
                 }
             }
             if ($synHit) {
-                $score = 0.95; $reason = 'synonym'
+                $score = 1.25; $reason = 'synonym'
             } else {
                 $sim = Get-Similarity $TargetLabel $label
                 foreach ($s in $bag) { $sim = [Math]::Max($sim, (Get-Similarity $s $label)) }
@@ -462,34 +469,35 @@ function Find-RowValueByLabel {
             $score-=$($val | Test-LetterRatio -IgnoreWhitespace)
             if ($val | Test-IsDigitsOnly) { $score += 0.35 } 
             elseif (Test-MostlyDigits $val) { $score += 0.2 }
+            else {$score -=0.35}
         }
         if ($fieldType -and $fieldType -eq "Phone"){
-            if (Test-IsPhoneValue $val){$score+=.7}
+            if (Test-IsPhoneValue $val){$score+=0.7} else {$score-=0.7}
         }        
         if ($fieldType -and @("RichText","Heading","Embed") -contains $fieldType){
             if ($val | Test-IsHtml -MinTags 3){
-                $score+=0.195
+                $score+=0.295
             } elseif ($val | Test-IsHtml -MinTags 2){
-                $score+=0.175
+                $score+=0.275
             } elseif ($val | Test-IsHtml -MinTags 1){
-                $score+=0.15
+                $score+=0.25
+            } else {
+                $score-=0.25
             }
         }
         if ($fieldType -eq "Website"){
-            if ($val | Test-IsDomainOrIPv4) {$score+=0.195}
+            if ($val | Test-IsDomainOrIPv4) {$score+=0.195} else {$score-=0.195}
         }
-
-        
 
         # label family + value scoring
 
         $family = Get-BestSynonymSet -Label $label -SynonymSets $FIELD_SYNONYMS
         switch ($family) {
             'contact preference' {
-                if (Test-IsEmailValue $val) { $score -= 0.46 }
-                if (Test-IsPhoneValue $val) { $score -= 0.16 }
-                if (Test-MostlyDigits $val) { $score -= 0.2 }
-                if ($val | Test-IsDigitsOnly) { $score -= 0.35 }
+                if (Test-IsEmailValue $val) { $score -= 0.25 }
+                if (Test-IsPhoneValue $val) { $score -= 0.25 }
+                if (Test-MostlyDigits $val) { $score -= 0.25 }
+                if ($val | Test-IsDigitsOnly) { $score -= 0.435 }
                 foreach ($keyword in @("type","method")){
                     if ($label -ilike "*$keyword*"){ $score += ".65" }
                 }
@@ -497,9 +505,9 @@ function Find-RowValueByLabel {
             'email' {
                 if (Test-IsEmailValue $val) { $score += 0.43 } else { $score -= 0.45 }
                 foreach ($commonPhoneString in @("@",".")){
-                    if (Get-NeedlePresentInHaystack -needle "@" -Haystack $val ) {$score += 0.13 } else { $score -= 0.2 }
+                    if (Get-NeedlePresentInHaystack -needle "@" -Haystack $val ) {$score += 0.24 } else { $score -= 0.24 }
                 }
-                if ($val | Test-IsDigitsOnly) { $score -= 0.35 }
+                if ($val | Test-IsDigitsOnly) { $score -= 0.4 }
             }
             'phone' {
                 if (Test-IsPhoneValue $val) { $score += 0.33 } else { $score -= 0.35 }
@@ -515,10 +523,34 @@ function Find-RowValueByLabel {
                 if ($val | Test-IsDigitsOnly) { $score -= 0.35 }
                 if (Test-IsEmailValue $val) { $score -= 0.46 }
             }
+            'notes' {
+                $score += $($($val | Test-LetterRatio -IgnoreWhitespace)/2)
+            }
+            'important' {
+                if ("$val".Tolower() -ilike $truthy -or "$val".Tolower() -ilike $falsy){
+                    $score += 0.45
+                }
+            }            
+            'first name' {
+                if (Test-MostlyDigits $val) { $score -= 0.55 }
+                if ($val | Test-IsDigitsOnly) { $score -= 0.35 }
+                if (Test-IsEmailValue $val) { $score -= 0.46 }
+                $score += $($($val | Test-LetterRatio -IgnoreWhitespace)/2)
+            }
+            'last name' {
+                if (Test-MostlyDigits $val) { $score -= 0.55 }
+                if ($val | Test-IsDigitsOnly) { $score -= 0.35 }
+                if (Test-IsEmailValue $val) { $score -= 0.46 }
+                $score += $($($val | Test-LetterRatio -IgnoreWhitespace)/2)
+            }            
             'name' {
                 if (Test-MostlyDigits $val) { $score -= 0.55 }
                 if ($val | Test-IsDigitsOnly) { $score -= 0.35 }
                 if (Test-IsEmailValue $val) { $score -= 0.46 }
+                $score += $($($val | Test-LetterRatio -IgnoreWhitespace)/2)
+            }
+            default {
+                if (Test-IsEmailValue $val) { $score -= 0.5 }
             }
 
         }
@@ -543,6 +575,7 @@ function Find-RowValueByLabel {
             }
         }
     }
+    $candidates | ConvertTo-json -depth 55 | out-file "$($Row.id)-$($TargetLabel).json"
 
     if ($ReturnCandidate) { return $candidates[0] }
     return $candidates[0].Value

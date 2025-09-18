@@ -2,3 +2,4 @@ ITBoost\*
 *environ*
 !*.example
 results.json
+*.json
