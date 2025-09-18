@@ -494,13 +494,17 @@ function Find-RowValueByLabel {
         $family = Get-BestSynonymSet -Label $label -SynonymSets $FIELD_SYNONYMS
         switch ($family) {
             'contact preference' {
-                if (Test-IsEmailValue $val) { $score -= 0.25 }
-                if (Test-IsPhoneValue $val) { $score -= 0.25 }
-                if (Test-MostlyDigits $val) { $score -= 0.25 }
+                if (Test-IsEmailValue $val) { $score -= 0.75 }
+                if (Test-IsPhoneValue $val) { $score -= 0.65 }
+                if (Test-MostlyDigits $val) { $score -= 0.65 }
                 if ($val | Test-IsDigitsOnly) { $score -= 0.435 }
                 foreach ($keyword in @("type","method")){
-                    if ($label -ilike "*$keyword*"){ $score += ".65" }
+                    if ($label -ilike "*$keyword*"){ $score += ".135" }
                 }
+                $contactsynonyms = $FIELD_SYNONYMS | where-object {$_ -contains 'phone' -or $_ -contains 'email' -or $_ -contains 'sms'}
+                foreach ($expectedvalue in $contactsynonyms){
+                    if ($val -ilike "*$expectedvalue*"){ $score += ".425" }
+                }                
             }            
             'email' {
                 if (Test-IsEmailValue $val) { $score += 0.43 } else { $score -= 0.45 }
@@ -521,9 +525,10 @@ function Find-RowValueByLabel {
             'title' {
                 if (Test-MostlyDigits $val) { $score -= 0.55 }
                 if ($val | Test-IsDigitsOnly) { $score -= 0.35 }
-                if (Test-IsEmailValue $val) { $score -= 0.46 }
+                if (Test-IsEmailValue $val) { $score -= 0.725 }
             }
             'notes' {
+                $score += $($($val | Test-LetterRatio -IgnoreWhitespace)/2)
                 $score += $($($val | Test-LetterRatio -IgnoreWhitespace)/2)
             }
             'important' {
