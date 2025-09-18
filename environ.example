@@ -1,0 +1,4 @@
+$HuduBaseURL=""
+$HuduAPIKey=""
+$ITBoostExportPath=""
+. .\migrate-itboost-hudu.ps1
