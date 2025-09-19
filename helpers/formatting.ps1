@@ -1,30 +1,36 @@
 
 ## constants
 $FIELD_SYNONYMS = @(
-  @('name','full name','contact name','person'),
+  @('id','identifier','unique id','unique identifier','uuid')
+  @('name','full name','contact name','person','names'),
   @('first name','firstname','given name','forename','nombre','prénom','vorname'),
   @('last name','lastname','family name','surname','apellido','nom de famille','nachname'),
   @('title','job title','role','position','puesto','cargo'),
   @('department','dept','division','area','team'),
-  @('email','e-mail','mail','email address','correo','adresse e-mail'),
-  @('phone','telephone','tel','direct','office','work','main','primary phone','did','mobile','cell','cell phone','mobile phone','handy','gsm'),
-  @('preferred communication','preferred contact','contact method','pref comms','pref contact'),
+  @('email','e-mail','mail','email address','correo','correo electrónico','adresse e-mail','emails'),
+  @('phone','phone number','telephone','telephone number','tel',
+    'office phone','work phone','main phone','primary phone','direct phone',
+    'mobile','cell','cell phone','mobile phone',"phones",'phone mumbers','telephones',
+    'handy','gsm','teléfono','telefone','telefon'),
+  @('contact preference','contact type','preferred communication','preferred contact','contact method','pref comms','pref contact'),
   @('gender','sex'),
-  @('status','state','stage','relationship','owner','active','inactive'),
-  @('workstation','computer','pc','machine','host'),
-  @('ip','ip address','primary co mputer ip','workstation ip'),
-  @('notes','note','remarks','comments'),
-  @('location','branch','office','site','building','sucursal','standort','filiale','vestiging','sede'),
-  @('address 1','address1','addr1','street','street address','line 1','address line 1'),
-  @('address 2','address2','addr2','line 2','address line 2','apt','suite','unit'),
-  @('city','town','locality','municipality','ciudad','ville','ort'),
-  @('postal code','zipcode','zip','postcode','cp','code postal','plz','codigo postal'),
+  @('password','passwords','pass','secret pass','secret','secret password')
+  @('status','stage','relationship','owner','active','inactive'),
+  @('computer','workstation','pc','machine','host'),
+  @('ip address','ip','workstation ip','primary computer ip'),
+  @('notes','note','remarks','comments','observations','comentarios','bemerkungen'),
+  @('location','branch','office location','site','building','sucursal','standort','filiale','vestiging','sede'),
+  @('address line 1','address 1','address1','addr1','street','street address','line 1'),
+  @('address line 2','address 2','address2','addr2','line 2','apt','suite','unit'),
+  @('city','town','locality','municipality','ciudad','ville','ort','gemeente'),
+  @('postal code','zip code','zipcode','zip','postcode','cp','code postal','plz','código postal','cap'),
   @('region','state','province','county','departement','bundesland','estado','provincia'),
-  @('country','nation','pais','land','paese'),
-  @('phone','telephone','tel','telefono','telefone','telefon'),
-  @('fax'),
-  @('notes','note','remarks','observations','comentarios','bemerkungen')
+  @('country','country name','nation','país','pais','land','paese'),
+  @('fax','fax number')
+  @('important','notice','warning','vip','very important person')
 )
+$truthy = '(?ix)\b(?:y|yes|yeah|yep|true|t|on|ok|okay|enable|enabled|active)\b|(?<!\d)1(?!\d)'
+$falsy  = '(?ix)\b(?:n|no|nope|false|f|off|disable|disabled|inactive)\b|(?<!\d)0(?!\d)'
 
 function Normalize-Text {
     param([string]$s)
@@ -41,6 +47,219 @@ function Normalize-Text {
     ($sb.ToString()).Normalize([System.Text.NormalizationForm]::FormC)
 }
 
+# Build a small index once (variants per set for fast overlap checks)
+function New-SynonymIndex {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][object[]]$SynonymSets)
+
+    $idx = @()
+    for ($i = 0; $i -lt $SynonymSets.Count; $i++) {
+        $set = @($SynonymSets[$i])
+        if ($set.Count -eq 0) { continue }
+
+        $canon = [string]$set[0]  # canonical = first item
+        $vars  = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+
+        # union of normalized variants for every term in the set
+        foreach ($t in $set) {
+            foreach ($v in (Get-NormalizedVariants $t)) { [void]$vars.Add($v) }
+        }
+
+        $idx += [pscustomobject]@{
+            Index    = $i
+            Canon    = $canon
+            Terms    = $set
+            Variants = $vars
+        }
+    }
+    return ,$idx
+}
+function Get-SimilaritySafe { param([string]$A,[string]$B)
+    if ([string]::IsNullOrWhiteSpace($A) -or [string]::IsNullOrWhiteSpace($B)) { return 0.0 }
+    Get-Similarity $A $B
+}
+
+function Get-BestSynonymSet {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Label,
+        [Parameter(Mandatory)][object[]]$SynonymSets,
+        [object[]]$Index,              # optional: pass result of New-SynonymIndex
+        [double]$MinScore = 1.0,       # require at least this much evidence
+        [double]$MinGap   = 0.25,      # top must beat #2 by this margin
+        [switch]$ReturnObject          # return full object (Index/Canon/Terms/Score)
+    )
+
+    if (-not $Index) { $Index = New-SynonymIndex $SynonymSets }
+
+    $labelNorm = Normalize-Text $Label
+    $labelVars = Get-NormalizedVariants $Label
+
+    $cands = @()
+    foreach ($item in $Index) {
+        # 1) fast variant overlap
+        $overlap = 0
+        foreach ($v in $labelVars) { if ($item.Variants.Contains($v)) { $overlap++ } }
+
+        # 2) whole-word equivalence count
+        $eqCount = 0
+        foreach ($t in $item.Terms) { if (Test-LabelEquivalent $Label $t) { $eqCount++ } }
+
+        # 3) small fuzzy tie-breaker (max similarity across terms)
+        $maxSim = 0.0
+        foreach ($t in $item.Terms) {
+            $s = Get-Similarity $Label $t
+            if ($s -gt $maxSim) { $maxSim = $s }
+        }
+
+        # Weighted score: counts dominate; fuzzy cannot overpower counts
+        $score = (3.0 * $overlap) + (1.5 * $eqCount) + (0.5 * $maxSim)
+        if ($score -gt 0) {
+            $cands += [pscustomobject]@{
+                Index  = $item.Index
+                Canon  = $item.Canon
+                Terms  = $item.Terms
+                Score  = [Math]::Round($score, 4)
+                Parts  = [pscustomobject]@{Overlap=$overlap; Eq=$eqCount; Fuzzy=[Math]::Round($maxSim,4)}
+            }
+        }
+    }
+
+    if ($cands.Count -eq 0) { return ($ReturnObject ? $null : '') }
+
+    # Sort (no pipeline inside conditionals)
+    for ($i=0; $i -lt $cands.Count; $i++) {
+        for ($j=$i+1; $j -lt $cands.Count; $j++) {
+            if ($cands[$j].Score -gt $cands[$i].Score -or
+               (($cands[$j].Score -eq $cands[$i].Score) -and ($cands[$j].Index -lt $cands[$i].Index))) {
+                $tmp=$cands[$i]; $cands[$i]=$cands[$j]; $cands[$j]=$tmp
+            }
+        }
+    }
+
+    $top = $cands[0]
+    if ($top.Score -lt $MinScore) { return ($ReturnObject ? $null : '') }
+    if ($cands.Count -gt 1) {
+        $gap = $top.Score - $cands[1].Score
+        if ($gap -lt $MinGap) { return ($ReturnObject ? $null : '') }
+    }
+
+    return ($ReturnObject ? $top : (Normalize-Text $top.Canon))
+}
+function Test-IsDomainOrIPv4 {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, ValueFromPipeline=$true)] $InputObject
+    )
+    process {
+        $s = if ($null -eq $InputObject) { '' } else { "$InputObject" }
+        $s = $s.Trim()
+        if ($s.Length -eq 0) { return $false }
+
+        # strip scheme
+        $s = $s -replace '^[A-Za-z][A-Za-z0-9+.\-]*://',''
+
+        # strip path/query/fragment
+        $s = $s -replace '[/?#].*$',''
+
+        # trim trailing dot on FQDN
+        if ($s.EndsWith('.')) { $s = $s.TrimEnd('.') }
+        if ($s.Length -eq 0) { return $false }
+
+        # IPv4[:port]
+        $m = [regex]::Match($s,'^(?<ip>(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3})(?::(?<port>\d{1,5}))?$')
+        if ($m.Success) {
+            $p = $m.Groups['port'].Value
+            if ($p) { $port = [int]$p; if ($port -lt 0 -or $port -gt 65535) { return $false } }
+            return $true
+        }
+
+        # domain[:port]  (labels <=63 chars, total <=253, TLD >=2)
+        $m = [regex]::Match($s,'^(?<host>(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,})(?::(?<port>\d{1,5}))?$')
+        if ($m.Success) {
+            $p = $m.Groups['port'].Value
+            if ($p) { $port = [int]$p; if ($port -lt 0 -or $port -gt 65535) { return $false } }
+            return $true
+        }
+
+        # localhost[:port]
+        $m = [regex]::Match($s,'^(localhost)(?::(?<port>\d{1,5}))?$')
+        if ($m.Success) {
+            $p = $m.Groups['port'].Value
+            if ($p) { $port = [int]$p; if ($port -lt 0 -or $port -gt 65535) { return $false } }
+            return $true
+        }
+
+        return $false
+    }
+}
+function Get-BestSynonymSet {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Label,
+        [Parameter(Mandatory)][object[]]$SynonymSets,
+        [object[]]$Index,              # optional: pass result of New-SynonymIndex
+        [double]$MinScore = 1.0,       # require at least this much evidence
+        [double]$MinGap   = 0.25,      # top must beat #2 by this margin
+        [switch]$ReturnObject          # return full object (Index/Canon/Terms/Score)
+    )
+
+    if (-not $Index) { $Index = New-SynonymIndex $SynonymSets }
+
+    $labelNorm = Normalize-Text $Label
+    $labelVars = Get-NormalizedVariants $Label
+
+    $cands = @()
+    foreach ($item in $Index) {
+        # 1) fast variant overlap
+        $overlap = 0
+        foreach ($v in $labelVars) { if ($item.Variants.Contains($v)) { $overlap++ } }
+
+        # 2) whole-word equivalence count
+        $eqCount = 0
+        foreach ($t in $item.Terms) { if (Test-LabelEquivalent $Label $t) { $eqCount++ } }
+
+        # 3) small fuzzy tie-breaker (max similarity across terms)
+        $maxSim = 0.0
+        foreach ($t in $item.Terms) {
+            $s = Get-Similarity $Label $t
+            if ($s -gt $maxSim) { $maxSim = $s }
+        }
+
+        # Weighted score: counts dominate; fuzzy cannot overpower counts
+        $score = (3.0 * $overlap) + (1.5 * $eqCount) + (0.5 * $maxSim)
+        if ($score -gt 0) {
+            $cands += [pscustomobject]@{
+                Index  = $item.Index
+                Canon  = $item.Canon
+                Terms  = $item.Terms
+                Score  = [Math]::Round($score, 4)
+                Parts  = [pscustomobject]@{Overlap=$overlap; Eq=$eqCount; Fuzzy=[Math]::Round($maxSim,4)}
+            }
+        }
+    }
+
+    if ($cands.Count -eq 0) { return ($ReturnObject ? $null : '') }
+
+    # Sort (no pipeline inside conditionals)
+    for ($i=0; $i -lt $cands.Count; $i++) {
+        for ($j=$i+1; $j -lt $cands.Count; $j++) {
+            if ($cands[$j].Score -gt $cands[$i].Score -or
+               (($cands[$j].Score -eq $cands[$i].Score) -and ($cands[$j].Index -lt $cands[$i].Index))) {
+                $tmp=$cands[$i]; $cands[$i]=$cands[$j]; $cands[$j]=$tmp
+            }
+        }
+    }
+
+    $top = $cands[0]
+    if ($top.Score -lt $MinScore) { return ($ReturnObject ? $null : '') }
+    if ($cands.Count -gt 1) {
+        $gap = $top.Score - $cands[1].Score
+        if ($gap -lt $MinGap) { return ($ReturnObject ? $null : '') }
+    }
+
+    return ($ReturnObject ? $top : (Normalize-Text $top.Canon))
+}
 function Test-LabelEquivalent {
     param([string]$A, [string]$B)
     $a = Normalize-Text $A; $b = Normalize-Text $B
@@ -90,6 +309,85 @@ function Get-Similarity {
     return 1.0 - ($dist / $maxLen)
 }
 
+function Test-IsDigitsOnly {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, ValueFromPipeline=$true)]
+        $InputObject,
+        [switch]$AsciiOnly,
+        [switch]$AllowEmpty
+    )
+    process {
+        # If an array/collection comes in, evaluate each element
+        if ($InputObject -is [System.Collections.IEnumerable] -and -not ($InputObject -is [string])) {
+            foreach ($item in $InputObject) {
+                Test-IsDigitsOnly -InputObject $item -AsciiOnly:$AsciiOnly -AllowEmpty:$AllowEmpty
+            }
+            return
+        }
+
+        $s = if ($null -eq $InputObject) { '' }
+             elseif ($InputObject -is [string]) { $InputObject }
+             else { "$InputObject" }
+
+        $s = $s.Trim()
+        if (-not $AllowEmpty -and $s.Length -eq 0) { $false; return }
+
+        $pattern = if ($AsciiOnly) { '^[0-9]+$' } else { '^\p{Nd}+$' }
+        $s -match $pattern
+    }
+}
+function Test-LetterRatio {
+    [CmdletBinding()]param(
+        [Parameter(Mandatory,ValueFromPipeline=$true)]$InputObject,
+        [switch]$AsciiOnly,           # else uses Unicode \p{L}
+        [switch]$IgnoreWhitespace     # don't count spaces in the length
+    )
+    process {
+        $s = if ($null -eq $InputObject) { '' } else { "$InputObject" }
+        if ($IgnoreWhitespace) { $s = $s -replace '\s+', '' }
+        if ($s.Length -eq 0) { return $false }
+        $pat = if ($AsciiOnly) { '[A-Za-z]' } else { '\p{L}' }
+        $letters = [regex]::Matches($s, $pat).Count
+        return [double]$($letters / [double]$s.Length)
+    }
+}
+
+function Test-IsHtml {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, ValueFromPipeline=$true)] $InputObject,
+        [int]$MinTags = 1,            # how many tags must be present
+        [switch]$RequirePaired,       # require at least one <tag>...</tag> (non-void)
+        [switch]$DecodeEntities       # decode &lt;div&gt; first
+    )
+    process {
+        # normalize to string
+        $s = if ($null -eq $InputObject) { '' } else { "$InputObject" }
+        if ($DecodeEntities) { $s = [System.Net.WebUtility]::HtmlDecode($s) }
+        if ($s.Length -eq 0) { return $false }
+
+        # quick root/doctype hit
+        if ($s -match '(?is)<!DOCTYPE\s+html|<html\b') { return $true }
+
+        # find tags
+        $tagRegex = [regex]'(?is)<([a-z][a-z0-9]*)\b[^>]*>'
+        $matches  = $tagRegex.Matches($s)
+        if ($matches.Count -lt $MinTags) { return $false }
+        if (-not $RequirePaired) { return $true }
+
+        # require at least one non-void paired tag (or self-closing)
+        $void = @('area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr')
+        for ($i=0; $i -lt $matches.Count; $i++) {
+            $name = $matches[$i].Groups[1].Value.ToLowerInvariant()
+            if ($void -contains $name) { continue }
+            if ($matches[$i].Value -match '/\s*>$') { return $true } # <tag />
+            $closePattern = "(?is)</\s*$name\s*>"
+            if ([regex]::IsMatch($s, $closePattern)) { return $true }
+        }
+        return $false
+    }
+}
 function Find-RowValueByLabel {
     [CmdletBinding()]
     param(
@@ -97,11 +395,15 @@ function Find-RowValueByLabel {
         [Parameter(Mandatory)][psobject]$Row,
         [object[]]$FieldSynonyms,   # full sets (e.g. $FIELD_SYNONYMS)
         [string[]]$SynonymBag,      # flat bag (e.g. from Get-FieldSynonymsSimple)
-        [double]$MinSimilarity = 0.82,
+        [string]$fieldType,
+        [double]$MinSimilarity = 0.925,
         [switch]$ReturnCandidate
     )
 
     if (-not $Row) { return $null }
+    if ($fieldType -and $fieldType -eq "AssetTag"){return $null}
+
+
 
     # Build synonym bag without pipelines
     $bag = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
@@ -143,9 +445,9 @@ function Find-RowValueByLabel {
         $val    = $p.Value
         $score  = 0.0
         $reason = ''
-
+        # label scoring
         if (Test-LabelEquivalent $label $TargetLabel) {
-            $score = 1.00; $reason = 'exact/equivalent'
+            $score = 1.50; $reason = 'exact/equivalent'
         } else {
             $synHit = $false
             if ($bag.Count -gt 0) {
@@ -154,7 +456,7 @@ function Find-RowValueByLabel {
                 }
             }
             if ($synHit) {
-                $score = 0.95; $reason = 'synonym'
+                $score = 1.25; $reason = 'synonym'
             } else {
                 $sim = Get-Similarity $TargetLabel $label
                 foreach ($s in $bag) { $sim = [Math]::Max($sim, (Get-Similarity $s $label)) }
@@ -162,6 +464,101 @@ function Find-RowValueByLabel {
             }
         }
 
+        # field type scoring
+        if ($fieldType -and $fieldType -eq "Number"){
+            $score-=$($val | Test-LetterRatio -IgnoreWhitespace)
+            if ($val | Test-IsDigitsOnly) { $score += 0.35 } 
+            elseif (Test-MostlyDigits $val) { $score += 0.2 }
+            else {$score -=0.35}
+        }
+        if ($fieldType -and $fieldType -eq "Phone"){
+            if (Test-IsPhoneValue $val){$score+=0.7} else {$score-=0.7}
+        }        
+        if ($fieldType -and @("RichText","Heading","Embed") -contains $fieldType){
+            if ($val | Test-IsHtml -MinTags 3){
+                $score+=0.295
+            } elseif ($val | Test-IsHtml -MinTags 2){
+                $score+=0.275
+            } elseif ($val | Test-IsHtml -MinTags 1){
+                $score+=0.25
+            } else {
+                $score-=0.25
+            }
+        }
+        if ($fieldType -eq "Website"){
+            if ($val | Test-IsDomainOrIPv4) {$score+=0.195} else {$score-=0.195}
+        }
+
+        # label family + value scoring
+
+        $family = Get-BestSynonymSet -Label $label -SynonymSets $FIELD_SYNONYMS
+        switch ($family) {
+            'contact preference' {
+                if (Test-IsEmailValue $val) { $score -= 0.75 }
+                if (Test-IsPhoneValue $val) { $score -= 0.65 }
+                if (Test-MostlyDigits $val) { $score -= 0.65 }
+                if ($val | Test-IsDigitsOnly) { $score -= 0.435 }
+                foreach ($keyword in @("type","method")){
+                    if ($label -ilike "*$keyword*"){ $score += ".135" }
+                }
+                $contactsynonyms = $FIELD_SYNONYMS | where-object {$_ -contains 'phone' -or $_ -contains 'email' -or $_ -contains 'sms'}
+                foreach ($expectedvalue in $contactsynonyms){
+                    if ($val -ilike "*$expectedvalue*"){ $score += ".425" }
+                }                
+            }            
+            'email' {
+                if (Test-IsEmailValue $val) { $score += 0.43 } else { $score -= 0.45 }
+                foreach ($commonPhoneString in @("@",".")){
+                    if (Get-NeedlePresentInHaystack -needle "@" -Haystack $val ) {$score += 0.24 } else { $score -= 0.24 }
+                }
+                if ($val | Test-IsDigitsOnly) { $score -= 0.4 }
+            }
+            'phone' {
+                if (Test-IsPhoneValue $val) { $score += 0.33 } else { $score -= 0.35 }
+                foreach ($commonPhoneString in @("(","ext",")","-")){
+                    if (Get-NeedlePresentInHaystack -needle "(" -Haystack $val ) {$score += 0.125 }
+                }
+                if (Test-MostlyDigits $val) { $score += 0.25 }
+                if (Test-IsEmailValue $val) { $score -= 0.46 }
+                $score-= $($($val | Test-LetterRatio -IgnoreWhitespace)/1.25)
+            }
+            'title' {
+                if (Test-MostlyDigits $val) { $score -= 0.55 }
+                if ($val | Test-IsDigitsOnly) { $score -= 0.35 }
+                if (Test-IsEmailValue $val) { $score -= 0.725 }
+            }
+            'notes' {
+                $score += $($($val | Test-LetterRatio -IgnoreWhitespace)/2)
+                $score += $($($val | Test-LetterRatio -IgnoreWhitespace)/2)
+            }
+            'important' {
+                if ("$val".Tolower() -ilike $truthy -or "$val".Tolower() -ilike $falsy){
+                    $score += 0.45
+                }
+            }            
+            'first name' {
+                if (Test-MostlyDigits $val) { $score -= 0.55 }
+                if ($val | Test-IsDigitsOnly) { $score -= 0.35 }
+                if (Test-IsEmailValue $val) { $score -= 0.46 }
+                $score += $($($val | Test-LetterRatio -IgnoreWhitespace)/2)
+            }
+            'last name' {
+                if (Test-MostlyDigits $val) { $score -= 0.55 }
+                if ($val | Test-IsDigitsOnly) { $score -= 0.35 }
+                if (Test-IsEmailValue $val) { $score -= 0.46 }
+                $score += $($($val | Test-LetterRatio -IgnoreWhitespace)/2)
+            }            
+            'name' {
+                if (Test-MostlyDigits $val) { $score -= 0.55 }
+                if ($val | Test-IsDigitsOnly) { $score -= 0.35 }
+                if (Test-IsEmailValue $val) { $score -= 0.46 }
+                $score += $($($val | Test-LetterRatio -IgnoreWhitespace)/2)
+            }
+            default {
+                if (Test-IsEmailValue $val) { $score -= 0.5 }
+            }
+
+        }
         if ($score -gt 0) {
             $candidates += [pscustomobject]@{
                 Property = $label
@@ -183,6 +580,7 @@ function Find-RowValueByLabel {
             }
         }
     }
+    $candidates | ConvertTo-json -depth 55 | out-file "$($Row.id)-$($TargetLabel).json"
 
     if ($ReturnCandidate) { return $candidates[0] }
     return $candidates[0].Value
@@ -245,6 +643,28 @@ function Get-NormalizedWebsiteHost {
         return $t.TrimEnd('.').ToLowerInvariant()
     }
 }
+
+function Test-IsEmailValue([object]$v){
+  if ($null -eq $v) { return $false }
+  $s = "$v".Trim()
+  return $s -match '^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$'
+}
+function Test-IsPhoneValue([object]$v){
+  if ($null -eq $v) { return $false }
+  $s = "$v"
+  # relaxed phone: digits with optional +/x and separators
+  $m = [regex]::Match($s,'(?:(?:\+|00)\d{1,3}[\s\-\.]*)?(?:\(?\d{2,4}\)?[\s\-\.]*){2,4}\d{2,6}(?:\s*(?:x|ext\.?|#)\s*\d{1,6})?')
+  return $m.Success
+}
+function Test-MostlyDigits([object]$v){
+  if ($null -eq $v) { return $false }
+  $s = "$v".Trim()
+  if ($s.Length -eq 0) { return $false }
+  $digits = ($s -replace '\D','').Length
+  return ($digits / [double]$s.Length) -ge 0.7
+}
+# map a target label to a canonical family (quick & simple)
+
 function Test-IsLocationLayoutName {
   param([string]$Name)
   foreach ($v in (Get-NormalizedVariants -Text $Name)) {
@@ -490,16 +910,22 @@ function Build-FieldsFromRow {
     if (-not $Row) { return @() }
 
     $out = @()
+    $chosenLabels = @()
     foreach ($field in $LayoutFields) {
       $label = $field.label
       if ([string]::IsNullOrWhiteSpace($label)) { continue }
-    
+    # special case assettag
+      if ($field.field_type -eq "Email"){
+        
+        
+      }
+
       if ($field.field_type -eq "AssetTag"){
         if (-not $field.linkable_id -or $field.linkable_id -lt 1){continue}
             $layoutForLinking = Get-HuduAssetLayouts -id $field.linkable_id
             $possiblyLinkedAssets=Get-HuduAssets -CompanyId $companyId -id $field.linkable_id
             $bag = Get-FieldSynonymsSimple -TargetLabel $layoutForLinking.name -IncludeVariants
-            $val = Find-RowValueByLabel -TargetLabel $label -Row $Row -SynonymBag $bag
+            $val = Find-RowValueByLabel -TargetLabel $label -Row $Row -SynonymBag $bag -fieldType $field.field_type
             $bestItem  = $null
             $bestScore = -1.0            
             if ($val){
@@ -520,7 +946,7 @@ function Build-FieldsFromRow {
             if ($bestItem -and $bestitem.id){ $val = $bestItem.id } else {continue}
             Write-Host "Matched Asset Tag field $label to $($layoutForLinking.name) asset $($bestItem.name) with score of $($bestScore)"
       }
-
+      # special case addressdata
       if ($field.field_type -eq "AddressData"){
         $tmpVal=Build-FieldsFromRow -Row $Row -LayoutFields @(
             @{label = "address_line_1"},
@@ -530,15 +956,15 @@ function Build-FieldsFromRow {
             @{label = "zip"},
             @{label = "country_name"}
           )
-          $address=@{}
+          $address=[ordered]@{}
           foreach ($val in $TMPVAL | where-object {-not [string]::IsNullOrWhiteSpace($_.Value)}){
               $address[$val.Name]=$val.Value
           }
           $val = @{Address = $address}
-      }      
+      }
 
       $bag = Get-FieldSynonymsSimple -TargetLabel $label -IncludeVariants
-      $val = Find-RowValueByLabel -TargetLabel $label -Row $Row -SynonymBag $bag
+      $val = Find-RowValueByLabel -TargetLabel $label -Row $Row -SynonymBag $bag -fieldType $field.field_type
       if ($field.field_type -eq "ListSelect" -and $null -ne $field.list_id){
         $val = $(Get-ListItemFuzzy -listid $field.list_id -source $val).id
       }

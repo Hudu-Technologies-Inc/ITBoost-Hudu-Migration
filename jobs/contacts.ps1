@@ -23,7 +23,7 @@ if ($ITBoostData.ContainsKey("contacts")){
         $contactsForCompany=$groupedContacts["$company"]
         $matchedCompany = $huduCompanies | where-object {($_.name -eq $row.organization) -or [bool]$(Test-NameEquivalent -A $_.name -B $company)} | Select-Object -First 1
         $matchedCompany=$matchedCompany ?? $(Select-ObjectFromList -objects $huduCompanies -message "Which company to match for source company, named $company")
-        write-host "$($contactsforcompany.count) locations for $company, hudu company id: $($matchedCompany.id)"
+        write-host "$($contactsforcompany.count) contacts for $company, hudu company id: $($matchedCompany.id)"
         foreach ($companyContact in $contactsForCompany){
             $matchedcontact = $allHuduContacts | where-object {$_.company_id -eq $matchedCompany.id -and 
                 $($(Test-NameEquivalent -A $_.name -B $companyContact.name) -or
