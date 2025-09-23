@@ -21,14 +21,18 @@ if ($ITBoostData.ContainsKey("domains")){
     $AddressDataField = $($locationfields | where-object {$_.field_type -eq "AddressData"} | select-object -first 1).label ?? $null
 
     $groupedLocations = $ITBoostData.locations.CSVData | Group-Object { $_.organization } -AsHashTable -AsString
+    
     $allHuduLocations = Get-HuduAssets -AssetLayoutId $LocationLayout.id
     
     foreach ($company in $groupedLocations.Keys){
+        $locationsSeen = @()
         $locationsForCompany=$groupedLocations["$company"]
         $matchedCompany = $huduCompanies | where-object {($_.name -eq $row.organization) -or [bool]$(Test-NameEquivalent -A $_.name -B $company)} | Select-Object -First 1
         $matchedCompany=$matchedCompany ?? $(Select-ObjectFromList -objects $huduCompanies -message "Which company to match for source company, named $company")
         write-host "$($locationsForCompany.count) locations for $company, hudu company id: $($matchedCompany.id)"
         foreach ($companyLocation in $locationsForCompany){
+            if ($locationsSeen -contains $companyLocation.name){continue} else {$locationsSeen+="$($companyLocation.name)"}
+
             $matchedlocation = $allHuduLocations | where-object {$_.company_id -eq $matchedCompany.id -and 
                 $($(Test-NameEquivalent -A $_.name -B $companyLocation.name) -or
                  $(Test-NameEquivalent -A $companyLocation.address_1 -B $($_.fields | where-object {$_.label -ilike "address"} | select-object -first 1).value))} | select-object -first 1
@@ -50,7 +54,7 @@ if ($ITBoostData.ContainsKey("domains")){
                     Fields=Build-FieldsFromRow -row $companyLocation -layoutFields $locationfields  -companyId $matchedCompany.id
                     AssetLayoutId=$LocationLayout.id
                 }
-                $NewAddressRequest.Fields | ConvertTo-Json -depth 99 | out-file "$($companyLocation.id).json"
+                $NewAddressRequest.Fields | ConvertTo-Json -depth 99 | out-file $(join-path $locations_folder "$($companyLocation.id).json")
 
                 try {
                     $newLocation = New-Huduasset @NewAddressRequest

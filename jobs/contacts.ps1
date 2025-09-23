@@ -17,8 +17,11 @@ if ($ITBoostData.ContainsKey("contacts")){
     }
     $contactsFields = $contactsLayout.fields
     $groupedContacts = $ITBoostData.contacts.CSVData | Group-Object { $_.organization } -AsHashTable -AsString
-    $allHuduContacts = Get-HuduAssets -AssetLayoutId $contactsLayout.id
-
+    try {
+        $allHuduContacts = Get-HuduAssets -AssetLayoutId $contactsLayout.id
+    } catch {
+        $allHuduContacts=@()
+    }
    foreach ($company in $groupedContacts.GetEnumerator().Name){
         $contactsForCompany=$groupedContacts["$company"]
         $matchedCompany = $huduCompanies | where-object {($_.name -eq $row.organization) -or [bool]$(Test-NameEquivalent -A $_.name -B $company)} | Select-Object -First 1
@@ -46,7 +49,7 @@ if ($ITBoostData.ContainsKey("contacts")){
                     Fields=Build-FieldsFromRow -row $companyContact -layoutFields $contactsFields -companyId $matchedCompany.id
                     AssetLayoutId=$contactsLayout.id
                 }
-                $newcontactrequest.Fields | ConvertTo-Json -depth 99 | out-file "$($companyContact.id).json"
+                $newcontactrequest.Fields | ConvertTo-Json -depth 99 | out-file $(join-path $contacts_folder "$($companyContact.id).json")
 
                 try {
                     $newContact = New-Huduasset @newcontactrequest
