@@ -31,7 +31,7 @@ $linkedFieldNames=@(
 $allcontacts = get-huduassets -assetlayoutId 2 -companyId 8
 $namesSeen = @()
 
-foreach ($config in $configurations) {
+foreach ($config in $configurations) { 
     if ($namesSeen -contains $config.name){continue} else {$namesSeen+=$config.name}
 
      # build a single hashtable of fields
