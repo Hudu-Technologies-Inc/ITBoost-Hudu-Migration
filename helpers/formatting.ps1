@@ -20,10 +20,10 @@ $FIELD_SYNONYMS = @(
   @('ip address','ip','workstation ip','primary computer ip'),
   @('notes','note','remarks','comments','observations','comentarios','bemerkungen'),
   @('location','branch','office location','site','building','sucursal','standort','filiale','vestiging','sede'),
-  @('address line 1','address 1','address1','addr1','street','street address','line 1'),
-  @('address line 2','address 2','address2','addr2','line 2','apt','suite','unit'),
+  @('address line 1','address 1','address_1','address1','addr1','street','street address','line 1'),
+  @('address line 2','address 2','address_2','address2','addr2','suite','unit'),
   @('city','town','locality','municipality','ciudad','ville','ort','gemeente'),
-  @('postal code','zip code','zipcode','zip','postcode','cp','code postal','plz','código postal','cap'),
+  @('postal code','zip code','zipcode','zip','postcode','cp','code postal','plz','código postal','cap', 'postal code', 'post'),
   @('region','state','province','county','departement','bundesland','estado','provincia'),
   @('country','country name','nation','país','pais','land','paese'),
   @('fax','fax number')
@@ -396,7 +396,7 @@ function Find-RowValueByLabel {
         [object[]]$FieldSynonyms,   # full sets (e.g. $FIELD_SYNONYMS)
         [string[]]$SynonymBag,      # flat bag (e.g. from Get-FieldSynonymsSimple)
         [string]$fieldType,
-        [double]$MinSimilarity = 0.925,
+        [double]$MinSimilarity = 1,
         [switch]$ReturnCandidate
     )
 
@@ -447,7 +447,7 @@ function Find-RowValueByLabel {
         $reason = ''
         # label scoring
         if (Test-LabelEquivalent $label $TargetLabel) {
-            $score = 1.50; $reason = 'exact/equivalent'
+            $score = 1.8; $reason = 'exact/equivalent'
         } else {
             $synHit = $false
             if ($bag.Count -gt 0) {
@@ -456,7 +456,7 @@ function Find-RowValueByLabel {
                 }
             }
             if ($synHit) {
-                $score = 1.25; $reason = 'synonym'
+                $score = 1.4; $reason = 'synonym'
             } else {
                 $sim = Get-Similarity $TargetLabel $label
                 foreach ($s in $bag) { $sim = [Math]::Max($sim, (Get-Similarity $s $label)) }
@@ -531,6 +531,16 @@ function Find-RowValueByLabel {
                 $score += $($($val | Test-LetterRatio -IgnoreWhitespace)/2)
                 $score += $($($val | Test-LetterRatio -IgnoreWhitespace)/2)
             }
+            'postal code' {
+                if ("$val".Trim().Length -lt 10){
+                    $score+=0.1
+                } else {$score-=0.1}
+                if ("$val".Trim().Length -lt 7){
+                    $score+=0.15
+                } else {$score-=0.15}
+                if ($val | Test-IsDigitsOnly) { $score += 0.25 }
+                if ("$val".Trim().Length -eq 5){$score += 0.3}
+            }            
             'important' {
                 if ("$val".Tolower() -ilike $truthy -or "$val".Tolower() -ilike $falsy){
                     $score += 0.45
@@ -580,7 +590,7 @@ function Find-RowValueByLabel {
             }
         }
     }
-    $candidates | ConvertTo-json -depth 55 | out-file "$($Row.id)-$($TargetLabel).json"
+    $candidates | ConvertTo-json -depth 55 | out-file $(join-path $debug_folder "$($Row.id)-$($TargetLabel).json")
 
     if ($ReturnCandidate) { return $candidates[0] }
     return $candidates[0].Value
@@ -920,32 +930,32 @@ function Build-FieldsFromRow {
         
       }
 
-      if ($field.field_type -eq "AssetTag"){
-        if (-not $field.linkable_id -or $field.linkable_id -lt 1){continue}
-            $layoutForLinking = Get-HuduAssetLayouts -id $field.linkable_id
-            $possiblyLinkedAssets=Get-HuduAssets -CompanyId $companyId -id $field.linkable_id
-            $bag = Get-FieldSynonymsSimple -TargetLabel $layoutForLinking.name -IncludeVariants
-            $val = Find-RowValueByLabel -TargetLabel $label -Row $Row -SynonymBag $bag -fieldType $field.field_type
-            $bestItem  = $null
-            $bestScore = -1.0            
-            if ($val){
-                foreach ($asset in $possiblyLinkedAssets) {
-                    $name = [string]$asset.name
-                    if ([string]::IsNullOrWhiteSpace($name)) { continue }
-                    $nNorm = Normalize-Text $name
-                    $score = if ($nNorm -eq $sNorm) { 1.0 } else { Get-Similarity $name $val }
-                    if ($nNorm.StartsWith($sNorm) -or $sNorm.StartsWith($nNorm)) {
-                        $score = [Math]::Min(1.0, $score + 0.02)
-                    }
-                    if ($score -gt $bestScore) {
-                        $bestScore = $score
-                        $bestItem  = $asset
-                    }
-                }
-            }
-            if ($bestItem -and $bestitem.id){ $val = $bestItem.id } else {continue}
-            Write-Host "Matched Asset Tag field $label to $($layoutForLinking.name) asset $($bestItem.name) with score of $($bestScore)"
-      }
+    #   if ($field.field_type -eq "AssetTag"){
+    #     if (-not $field.linkable_id -or $field.linkable_id -lt 1){continue}
+    #         $layoutForLinking = Get-HuduAssetLayouts -id $field.linkable_id
+    #         $possiblyLinkedAssets=Get-HuduAssets -CompanyId $companyId -id $field.linkable_id
+    #         $bag = Get-FieldSynonymsSimple -TargetLabel $layoutForLinking.name -IncludeVariants
+    #         $val = Find-RowValueByLabel -TargetLabel $label -Row $Row -SynonymBag $bag -fieldType $field.field_type
+    #         $bestItem  = $null
+    #         $bestScore = -1.0            
+    #         if ($val){
+    #             foreach ($asset in $possiblyLinkedAssets) {
+    #                 $name = [string]$asset.name
+    #                 if ([string]::IsNullOrWhiteSpace($name)) { continue }
+    #                 $nNorm = Normalize-Text $name
+    #                 $score = if ($nNorm -eq $sNorm) { 1.0 } else { Get-Similarity $name $val }
+    #                 if ($nNorm.StartsWith($sNorm) -or $sNorm.StartsWith($nNorm)) {
+    #                     $score = [Math]::Min(1.0, $score + 0.02)
+    #                 }
+    #                 if ($score -gt $bestScore) {
+    #                     $bestScore = $score
+    #                     $bestItem  = $asset
+    #                 }
+    #             }
+    #         }
+    #         if ($bestItem -and $bestitem.id){ $val = $bestItem.id } else {continue}
+    #         Write-Host "Matched Asset Tag field $label to $($layoutForLinking.name) asset $($bestItem.name) with score of $($bestScore)"
+    #   }
       # special case addressdata
       if ($field.field_type -eq "AddressData"){
         $tmpVal=Build-FieldsFromRow -Row $Row -LayoutFields @(
