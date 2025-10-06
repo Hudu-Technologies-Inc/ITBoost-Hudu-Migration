@@ -12,6 +12,7 @@ foreach ($file in $(Get-ChildItem -Path ".\helpers" -Filter "*.ps1" -File | Sort
 }
 Get-PSVersionCompatible; Get-HuduModule; Set-HuduInstance; Get-HuduVersionCompatible;
 
+if ($null -eq $UseSimpleMap){$UseSimpleMap = $true}
 ## grab the csv data
 $ITBoostData=@{
     JobState=@{}

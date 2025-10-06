@@ -1,3 +1,14 @@
+$ContactsMap = @{
+first_name="First Name"
+last_name="Last Name"
+contact_type="Contact Type"
+location="Location"
+primary_phone = "Phones"
+primary_email = "Emails"
+notes = "Notes"
+
+}
+
 
 if ($ITBoostData.ContainsKey("contacts")){
     $contactsLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "contact" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "people" -Haystack $_.name)) } | Select-Object -First 1
@@ -46,9 +57,29 @@ if ($ITBoostData.ContainsKey("contacts")){
                 $newcontactrequest=@{
                     Name="$($companyContact.first_name) $($companyContact.last_name)".Trim()
                     CompanyID = $matchedCompany.id
-                    Fields=Build-FieldsFromRow -row $companyContact -layoutFields $contactsFields -companyId $matchedCompany.id
                     AssetLayoutId=$contactsLayout.id
                 }
+                if ($false -eq $UseSimpleMap){
+                    $newcontactrequest["Fields"]=Build-FieldsFromRow -row $companyContact -layoutFields $contactsFields -companyId $matchedCompany.id
+                } else {
+                    $fields = @()
+                    foreach ($key in $ContactsMap.GetEnumerator().name | where-object {$_ -ne "location"}){
+                        $rowVal = $companyContact.CsvRow.$key ?? $null
+                        if ([string]::IsNullOrEmpty($rowVal)){continue}
+                        $huduField = $contactsMap[$key]
+                        $fields+=@{$hudufield = $rowVal}
+                    }
+                    $newcontactrequest["Fields"]=$fields
+                    if (-not $([string]::IsNullOrEmpty($companyContact.CsvRow.location))){
+                        $matchedLocation = Get-HuduAssets -AssetLayoutId $locationLayout.id -CompanyId $matchedCompany.id | where-object {$_.name -ilike "*$($companyContact.CsvRow.location)*"} | Select-Object -first 1
+                        if ($matchedLocation) {
+                            $newcontactrequest["Location"]=$matchedLocation.id
+                        }
+                    }
+
+
+                }
+
                 $newcontactrequest.Fields | ConvertTo-Json -depth 99 | out-file $(join-path $contacts_folder "$($companyContact.id).json")
 
                 try {

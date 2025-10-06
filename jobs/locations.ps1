@@ -1,3 +1,15 @@
+$LocationsMap = @{
+address_1="Address 1"
+address_2="Address 2"
+city="City"
+postal_code="Postal Code"
+region = "Region"
+country = "Country"
+notes = "Notes"
+phone = "Phone"
+fax = "Fax"
+
+}
 if ($ITBoostData.ContainsKey("domains")){
 
     $LocationLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "location" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "branch" -Haystack $_.name)) } | Select-Object -First 1
@@ -51,9 +63,21 @@ if ($ITBoostData.ContainsKey("domains")){
                 $NewAddressRequest=@{
                     Name=$companyLocation.name
                     CompanyID = $matchedCompany.id
-                    Fields=Build-FieldsFromRow -row $companyLocation -layoutFields $locationfields  -companyId $matchedCompany.id
                     AssetLayoutId=$LocationLayout.id
                 }
+                if ($false -eq $UseSimpleMap){
+                    $NewAddressRequest["Fields"]=Build-FieldsFromRow -row $companyLocation -layoutFields $locationfields  -companyId $matchedCompany.id
+                } else {
+                    $fields = @()
+                    foreach ($key in $LocationsMap.GetEnumerator().name ){
+                        $rowVal = $companyLocation.CsvRow.$key ?? $null
+                        if ([string]::IsNullOrEmpty($rowVal)){continue}
+                        $huduField = $LocationsMap[$key]
+                        $fields+=@{$hudufield = $rowVal}
+                    }
+                    $NewAddressRequest["Fields"]=$fields
+                }
+
                 $NewAddressRequest.Fields | ConvertTo-Json -depth 99 | out-file $(join-path $locations_folder "$($companyLocation.id).json")
 
                 try {
