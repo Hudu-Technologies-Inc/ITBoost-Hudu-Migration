@@ -3,7 +3,12 @@ if ($ITBoostData.ContainsKey("organizations")){
         $matchedCompany = $huduCompanies | where-object {
             ($_.name -eq $row.name) -or
             [bool]$(Test-NameEquivalent -A $_.name -B "*$($row.name)*") -or
+            [bool]$(Test-NameEquivalent -A $_.name -B "*$($row.short_name)*") -or
+            [bool]$(Test-NameEquivalent -A $_.nickname -B "*$($row.name)*") -or
             [bool]$(Test-NameEquivalent -A $_.nickname -B "*$($row.short_name)*")} | Select-Object -First 1
+        $matchedCompany = $matchedCompany ?? $(Get-HuduCompanies -name "$($row.name)")
+        $matchedCompany = $matchedCompany ?? $(Get-HuduCompanies -name "$($row.short_name)")
+    
         if ($matchedCompany){
             Write-Host "Matched company $($matchedCompany.name) to $($row.name)"
             $ITBoostData.organizations["matches"]+=@{
