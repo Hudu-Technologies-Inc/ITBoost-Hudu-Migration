@@ -113,15 +113,11 @@ function Get-DocumentFilesForRow {
   # De-dupe candidate folders
   $candidates = $candidates | Sort-Object Path -Unique
 
+  # 3) Tie-breaker scoring using created_date proximity and “DOC-” hint
   $created = $null
-
 
   $ranked = foreach ($c in $candidates) {
     $extra = 0
-    # Using .NET path API
-    if ([IO.Path]::GetFileName($c.Path) -imatch '^doc[\s_-]') { $extra += 5 }
-
-    # If a simple wildcard is enough
     if ([IO.Path]::GetFileName($c.Path) -like 'doc*') { $extra += 5 }
     if ($created) {
       # prefer folders whose newest file timestamp is close to created_date
@@ -154,7 +150,6 @@ function Get-DocumentFilesForRow {
 
   # 4) Collect files safely from best folder
   $files = Get-ChildItem -Path $best.Path -File -Recurse -EA SilentlyContinue |
-           Where-Object { $CanConvertExtentions -contains ($_.Extension.ToLower()) } |
            Select-Object -First $MaxFilesPerRow
 
   [pscustomobject]@{

@@ -9,7 +9,6 @@ $docs_folder=$(join-path $project_workdir "docs")
 
 foreach ($folder in @($debug_folder, $contacts_folder, $locations_folder, $docs_folder)) {
     if (!(Test-Path -Path "$folder")) { New-Item "$folder" -ItemType Directory }
-    Get-ChildItem -Path "$folder" -File -Recurse -Force | Remove-Item -Force
 }
 $ITBoostExportPath=$ITBoostExportPath ?? "C:\tmp\ITBoost"
 while (-not $(test-path $ITBoostExportPath)){
