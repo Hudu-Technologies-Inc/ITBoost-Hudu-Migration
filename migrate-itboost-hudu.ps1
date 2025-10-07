@@ -1,5 +1,5 @@
 $project_workdir=$project_workdir ?? $PSScriptRoot
-
+$toolsPath = resolve-path .\tools\
 
 $ITBoostExportPath=$ITBoostExportPath ?? "C:\tmp\ITBoost"
 while (-not $(test-path $ITBoostExportPath)){
@@ -21,9 +21,8 @@ $ITBoostData=@{
     CompletedJobs=@()
 }
 
-foreach ($job in @("get-hududata","read-csvs",#"companies","websites","locations",
-"contacts")){
-#,"passwords","wrap-up")){
+# foreach ($job in @("get-hududata","read-csvs","companies","websites","locations","contacts","configs","passwords","wrap-up")){
+foreach ($job in @("get-hududata","read-csvs","documents")){
     $ITBoostData.JobState = @{Status="$job"; StartedAt=$(Get-Date); FinishedAt=$null}
     write-host "Starting $($ITBoostdata.JobState.Status) at $($ITBoostdata.JobState.StartedAt)"
     . ".\jobs\$job.ps1"

@@ -1,4 +1,251 @@
 
+function Get-NormalizedExtension {
+  param([Parameter(Mandatory)]$PathOrExt)
+
+  $name = if ($PathOrExt -is [IO.FileInfo]) { $PathOrExt.Name } else { [IO.Path]::GetFileName([string]$PathOrExt) }
+  if ([string]::IsNullOrWhiteSpace($name)) { return $null }
+
+  if ($name -match '\.(tar\.(?:gz|bz2|xz))$') { return ('.' + $Matches[1].ToLowerInvariant()) } # ".tar.gz"
+  $ext = [IO.Path]::GetExtension($name)
+  if ([string]::IsNullOrEmpty($ext)) { return $null }
+  return $ext.ToLowerInvariant()
+}
+
+# --- categorizer (Disallowed > Image > Allowed > Unknown) ---
+function Get-ExtensionCategory {
+  param([Parameter(Mandatory)]$PathOrExt)
+
+  $ext = Get-NormalizedExtension $PathOrExt
+  if (-not $ext) { return 'Unknown' }
+
+  if ($NonConvertableSet.Contains($ext)) { return 'NoConvert' }
+  if ($ImageSet.Contains($ext))      { return 'Image' }
+  if ($Direct2DocSet.Contains($ext))    { return 'Web' }
+  if ($CanConvertSet.Contains($ext))    { return 'Allowed' }
+  return 'Unknown'
+}
+
+function Get-FileExt {
+  param([Parameter(Mandatory)]$PathOrInfo)
+
+  $name = if ($PathOrInfo -is [IO.FileInfo]) { $PathOrInfo.Name }
+          else { [IO.Path]::GetFileName([string]$PathOrInfo) }
+
+  if ($name -match '\.(tar\.(?:gz|bz2|xz))$') {
+    return $Matches[1].ToLowerInvariant()            # "tar.gz" / "tar.bz2" / "tar.xz"
+  }
+
+  return ([IO.Path]::GetExtension($name)).TrimStart('.').ToLowerInvariant()
+}
+
+
+function Get-DocumentFilesForRow {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][object]$Row,       # expects .locator, .name, .created_date (optional)
+    [Parameter(Mandatory)][string]$RootDocs,  # e.g. Join-Path $ITBoostExportPath 'documents'
+    [Parameter()][object[]]$FolderIndex       # from Build-DocFolderIndex (optional but recommended)
+  )
+
+  # helper: normalize text for "like" matching
+  function _norm([string]$s) {
+    if ([string]::IsNullOrWhiteSpace($s)) { return $null }
+    (($s -replace '[^\p{L}\p{Nd}]+',' ') -replace '\s+',' ').Trim().ToLower()
+  }
+
+  # 1) Try indexed resolve (strongest, if you built index earlier)
+  $candidates = @()
+  if ($FolderIndex -and (Get-Command Resolve-DocFolder -ErrorAction SilentlyContinue)) {
+    $hit = Resolve-DocFolder -Row $Row -Index $FolderIndex
+    if ($hit) {
+      $candidates += [pscustomobject]@{ Path=$hit.Path; Score=[int]$hit.Confidence; Reason=$hit.Reason }
+    }
+  }
+
+  # 2) Fallbacks by folder name scans (bounded to RootDocs)
+  $loc   = [string]$Row.locator
+  $name  = [string]$Row.name
+  $nLoc  = _norm $loc
+  $nName = _norm $name
+
+  # small local helper
+  function _addMatches($like, $weight, $reason) {
+    if (-not $like) { return }
+    $dirs = Get-ChildItem -Path $RootDocs -Recurse -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like $like } |
+            Select-Object -First 5
+    foreach($d in $dirs){
+      $candidates += [pscustomobject]@{ Path=$d.FullName; Score=$weight; Reason=$reason }
+    }
+  }
+
+  # exacty-ish patterns (favor locator)
+  if ($loc) {
+    _addMatches -like ("*{0}*" -f ($loc -replace '[\\/:*?\"<>|]','?'))  -weight 90 -reason 'like:locator'
+    _addMatches -like ("*DOC*{0}*" -f ($loc -replace '[\\/:*?\"<>|]','?')) -weight 88 -reason 'like:DOC+locator'
+  }
+  if ($name) {
+    _addMatches -like ("*DOC*{0}*" -f ($name -replace '[\\/:*?\"<>|]','?')) -weight 82 -reason 'like:DOC+name'
+    _addMatches -like ("*{0}*"    -f ($name -replace '[\\/:*?\"<>|]','?')) -weight 78 -reason 'like:name'
+  }
+
+  # De-dupe candidate folders
+  $candidates = $candidates | Sort-Object Path -Unique
+
+  $created = $null
+
+
+  $ranked = foreach ($c in $candidates) {
+    $extra = 0
+    # Using .NET path API
+    if ([IO.Path]::GetFileName($c.Path) -imatch '^doc[\s_-]') { $extra += 5 }
+
+    # If a simple wildcard is enough
+    if ([IO.Path]::GetFileName($c.Path) -like 'doc*') { $extra += 5 }
+    if ($created) {
+      # prefer folders whose newest file timestamp is close to created_date
+      $newest = Get-ChildItem -Path $c.Path -File -Recurse -EA SilentlyContinue |
+                Sort-Object LastWriteTime -Descending | Select-Object -First 1
+      if ($newest) {
+        $days = [math]::Abs((($newest.LastWriteTime) - $created).TotalDays)
+        $extra += [int][math]::Max(0, 20 - [math]::Min(20,$days))  # 0..20 bonus
+      }
+    }
+    [pscustomobject]@{
+      Path   = $c.Path
+      Score  = $c.Score + $extra
+      Reason = $c.Reason + ($(if($extra){"+signal"}))
+    }
+  }
+
+  $best = $ranked | Sort-Object Score -Descending | Select-Object -First 1
+  if (-not $best -or $best.Score -lt $MinConfidence) {
+    return [pscustomobject]@{
+      itb_id     = $Row.id
+      name       = $Row.name
+      locator    = $Row.locator
+      folder     = $null
+      files      = @()
+      confidence = ($best?.Score ?? 0)
+      reason     = 'no-confident-match'
+    }
+  }
+
+  # 4) Collect files safely from best folder
+  $files = Get-ChildItem -Path $best.Path -File -Recurse -EA SilentlyContinue |
+           Where-Object { $CanConvertExtentions -contains ($_.Extension.ToLower()) } |
+           Select-Object -First $MaxFilesPerRow
+
+  [pscustomobject]@{
+    itb_id     = $Row.id
+    name       = $Row.name
+    locator    = $Row.locator
+    folder     = $best.Path
+    files      = $files
+    confidence = $best.Score
+    reason     = $best.Reason
+  }
+}
+
+
+function Normalize-DocKey {
+  param([string]$s, [switch]$StripDocPrefix, [switch]$StripNumericId)
+  if ([string]::IsNullOrWhiteSpace($s)) { return $null }
+  $t = $s.Trim()
+
+  if ($StripDocPrefix) { $t = ($t -replace '^(?i)doc[\s\-_]*', '') }
+  if ($StripNumericId) { $t = ($t -replace '^(?i)(\d+)[\s\-_]*', '') }
+
+  # keep letters/digits and spaces, collapse whitespace, lowercase
+  $t = (($t -replace '[^\p{L}\p{Nd}]+', ' ') -replace '\s+', ' ').Trim().ToLower()
+  return $t
+}
+
+function Build-DocFolderIndex {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][string]$Root)
+
+  $dirs = Get-ChildItem -Path $Root -Recurse -Directory -ErrorAction SilentlyContinue
+
+  foreach ($d in $dirs) {
+    $name = $d.Name
+    if ($name -notmatch '^(?i)doc[\s\-_]') { continue }  # only index "DOC-..." folders
+
+    $normFull = Normalize-DocKey $name
+    $noDoc    = Normalize-DocKey $name -StripDocPrefix
+    # strip "DOC-" AND leading numeric id like "DOC-12609951-"
+    $noDocId  = Normalize-DocKey ($name -replace '^(?i)doc[\s\-_]*', '') -StripNumericId
+
+    [pscustomobject]@{
+      Name        = $name
+      FullName    = $d.FullName
+      NormFull    = $normFull
+      NormNoDoc   = $noDoc
+      NormNoDocId = $noDocId
+    }
+  }
+}
+
+function Resolve-DocFolder {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][object]$Row,    # expects fields: locator, name
+    [Parameter(Mandatory)][object[]]$Index
+  )
+
+  $loc  = [string]$Row.locator
+  $name = [string]$Row.name
+
+  # Candidate normalized keys
+  $keys = @()
+
+  if ($loc) {
+    # exact locator variants
+    $keys += [pscustomobject]@{ Key = (Normalize-DocKey $loc);          Weight = 100; Field='locator:norm' }
+    $keys += [pscustomobject]@{ Key = (Normalize-DocKey "DOC-$loc");     Weight = 95;  Field='locator:doc+' }
+    $keys += [pscustomobject]@{ Key = (Normalize-DocKey $loc -StripDocPrefix); Weight = 90; Field='locator:nodoc' }
+  }
+  if ($name) {
+    $keys += [pscustomobject]@{ Key = (Normalize-DocKey "DOC-$name");    Weight = 80;  Field='name:doc+' }
+    $keys += [pscustomobject]@{ Key = (Normalize-DocKey $name);          Weight = 75;  Field='name:norm' }
+  }
+
+  # Exact matches first
+  foreach ($cand in $keys) {
+    $hit = $Index | Where-Object {
+      $_.NormFull -eq $cand.Key -or
+      $_.NormNoDoc -eq $cand.Key -or
+      $_.NormNoDocId -eq $cand.Key
+    } | Select-Object -First 1
+    if ($hit) {
+      return [pscustomobject]@{
+        Path       = $hit.FullName
+        Confidence = $cand.Weight
+        Reason     = "exact:$($cand.Field)"
+      }
+    }
+  }
+
+  # Fuzzy contains (last resort)
+  foreach ($cand in $keys) {
+    if (-not $cand.Key) { continue }
+    $hit = $Index | Where-Object {
+      $_.NormFull    -like "*$($cand.Key)*" -or
+      $_.NormNoDoc   -like "*$($cand.Key)*" -or
+      $_.NormNoDocId -like "*$($cand.Key)*"
+    } | Select-Object -First 1
+    if ($hit) {
+      return [pscustomobject]@{
+        Path       = $hit.FullName
+        Confidence = [math]::Max(50, $cand.Weight - 30)
+        Reason     = "contains:$($cand.Field)"
+      }
+    }
+  }
+
+  return $null
+}
+
 function Convert-WithLibreOffice {
     param (
         [string]$inputFile,
@@ -173,123 +420,6 @@ function Get-EmbeddedFilesFromHtml {
 }
 
 # TODO: DRY this up later.
-function ConvertDownloadedFiles {
-    param (
-        $downloadedFiles,
-        $sofficePath
-    )
-
-    $convertedbatch = [System.Collections.ArrayList]@()
-
-    $convertIDX=0
-    foreach ($file in $downloadedFiles) {
-        $convertIDX=$convertIDX+1
-        $completionPercentage = Get-PercentDone -Current $convertIDX -Total $downloadedFiles.count
-
-        if (-not $file.LocalPath) {
-            write-host "Skipping site-level reference object..." -Color Yellow
-            continue
-        }
-
-        $file | Add-Member -NotePropertyName SuccessConverted -NotePropertyValue $false -Force
-        $file | Add-Member -NotePropertyName NewPath -NotePropertyValue $null -Force
-        $file | Add-Member -NotePropertyName ConversionError -NotePropertyValue $null -Force
-
-        write-host "processing $($file.LocalPath)" -Color Green
-
-        try {
-            $extension = [System.IO.Path]::GetExtension($file.LocalPath).ToLowerInvariant()
-            write-host "Checking extension '$extension'" -Color Green
-
-            $outputDir = Split-Path $file.LocalPath
-            $htmlPath = $null
-            # images as sharepoint file download
-            if ($EmbeddableImageExtensions -contains $extension){
-                write-host "Image extension: $extension — generating user-friendly HTML." -Color Yellow
-                $file.NewPath = Join-Path $outputDir "$([System.IO.Path]::GetFileNameWithoutExtension($file.localpath))-gen-image.html"
-                Get-GeneratedHTMLForImageFile -sourceFile $file -outputFile $file.newpath
-                $file.RawContent = Get-Content $file.NewPath -Raw
-                $file.ReplacedContent = $file.RawContent
-                $file.SuccessConverted = $false
-                $file.UsingGeneratedHTML = $true
-                $file | Add-Member -NotePropertyName ExternalEmbeddedFiles -NotePropertyValue ([System.Collections.ArrayList]@()) -Force
-                $file | Add-Member -NotePropertyName Base64EmbeddedImages  -NotePropertyValue ([System.Collections.ArrayList]@()) -Force
-                $file | Add-Member -NotePropertyName AllAttachments -NotePropertyValue $(if ($RunSummary.SetupInfo.SourceFilesAsAttachments) {@($file.LocalPath)} else {[System.Collections.ArrayList]@()}) -Force
-                $convertedbatch.Add($file) | Out-Null
-                continue
-            }
-            # disallowed for conversion as sharepoint file download
-            if ($RunSummary.SetupInfo.DisallowedForConvert -contains $extension){
-                write-host "extension: $extension is disallowed for converting— skipping conversion." -Color Yellow
-                $file.NewPath = Join-Path $outputDir "$([System.IO.Path]::GetFileNameWithoutExtension($file.localpath))-generated.html"
-                Get-DisallowedExtensionGeneratedHTML -sourceFile $file -outputFile $file.NewPath
-                $file.RawContent = Get-Content $file.NewPath -Raw
-                $file.ReplacedContent = $file.RawContent
-                $file.SuccessConverted = $false
-                $file.UsingGeneratedHTML = $true
-                $file | Add-Member -NotePropertyName ExternalEmbeddedFiles -NotePropertyValue ([System.Collections.ArrayList]@()) -Force
-                $file | Add-Member -NotePropertyName Base64EmbeddedImages  -NotePropertyValue ([System.Collections.ArrayList]@()) -Force
-                $file | Add-Member -NotePropertyName AllAttachments -NotePropertyValue $(if ($RunSummary.SetupInfo.SourceFilesAsAttachments) {@($file.LocalPath)} else {[System.Collections.ArrayList]@()}) -Force
-                $convertedbatch.Add($file) | Out-Null
-                continue    
-            }
-            switch ($extension) {
-                ".pdf" {
-                    $htmlPath = Convert-PdfToSlimHtml -InputPdfPath $file.localpath -PdfToHtmlPath $PDFToHTML
-                    # $htmlPath = Convert-PdfToHtml -inputPath $file.LocalPath `
-                    #                               -pdftohtmlPath $PDFToHTML `
-                    #                               -includeHiddenText $includeHiddenText `
-                    #                               -complexLayoutMode $includeComplexLayouts
-                }
-                default {
-                    $htmlPath = Convert-WithLibreOffice -inputFile $file.LocalPath `
-                                                  -outputDir $outputDir `
-                                                  -sofficePath $sofficePath
-                }
-            }
-
-            if ($htmlPath -and (Test-Path $htmlPath)) {
-                $file.NewPath = $htmlPath
-                $file.RawContent = Get-Content $file.NewPath -Raw
-
-                $file.SuccessConverted = $true
-                write-host "Converted: $($file.LocalPath) => $htmlPath" -Color Green
-                write-host "Discovering Embedded Files for $htmlPath" -Color DarkGreen
-
-                $foundfiles = Get-EmbeddedFilesFromHtml -htmlPath $htmlPath
-                $totalFound = [int]$foundfiles.Base64Images.Count + [int]$foundfiles.ExternalFiles.Count
-                write-host "Found $totalFound ($($foundfiles.ExternalFiles.count) extracted / $($foundfiles.Base64Images.count) embedded) inside converted $htmlpath" -Color DarkMagenta
-                if ($foundfiles.UpdatedHTMLContent) {
-                    $file.ReplacedContent = "$($foundfiles.UpdatedHTMLContent)<br>$($SHAREPOINT_URL_DELIMITER)<br>$($HUDU_LOCALATTACHMENT_DELIMITER)"
-                }
-                $file | Add-Member -NotePropertyName ExternalFiles -NotePropertyValue $foundfiles.ExternalFiles -Force
-                $file | Add-Member -NotePropertyName Base64ImagesWritten  -NotePropertyValue $foundfiles.Base64ImagesWritten  -Force
-                $allfiles=@() 
-                if ($RunSummary.SetupInfo.SourceFilesAsAttachments) {
-                    $allFiles = @(@($file.ExternalFiles) + @($file.Base64ImagesWritten) + @($file.LocalPath)) | Sort-Object -Unique
-                } else {
-                    $allFiles = @(@($file.ExternalFiles) + @($file.Base64ImagesWritten)) | Sort-Object -Unique
-                }
-                $file | Add-Member -NotePropertyName AllAttachments -NotePropertyValue $allFiles -Force
-
-            }
-        } catch {
-            $file.ConversionError = $_.Exception.Message
-            $file.SuccessConverted = $false
-            Write-ErrorObjectsToFile -ErrorObject @{
-                FileObject = $file
-                FoundEmbeds = $foundFiles
-                HtmlPath   = $htmlPath
-            } -Name "converterror-$(Get-SafeTitle $($file.LocalPath))"
-            continue
-        }
-        $convertedbatch.Add($file) | Out-Null
-        Write-Progress -Activity "converting $($file.title)" -Status "$completionPercentage%" -PercentComplete $completionPercentage
-
-    }
-
-    return $convertedbatch
-}
 function Convert-PdfToSlimHtml {
     param (
         [Parameter(Mandatory)][string]$InputPdfPath,
@@ -422,4 +552,58 @@ function Save-Base64ToFile {
     [System.IO.File]::WriteAllBytes($OutputPath, $bytes)
 
     write-host  "Saved Base64 content to: $OutputPath" -Color Cyan
+}
+
+
+function Stop-LibreOffice {
+    Get-Process | Where-Object { $_.Name -like "soffice*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+}
+
+function Get-LibreMSI {
+    param ([string]$tmpfolder)
+    if (Test-Path "C:\Program Files\LibreOffice\program\soffice.exe") {
+        return "C:\Program Files\LibreOffice\program\soffice.exe"
+    }
+    $downloadUrl = "$LibreFullInstall"
+    $downloadPath = Join-Path $tmpfolder "LibreOffice.msi"
+
+    Invoke-WebRequest -Uri $downloadUrl -OutFile $downloadPath
+
+    # Attempt to install
+    Start-Process msiexec.exe -ArgumentList "/i `"$downloadPath`" /qn" -Wait
+
+    # Look for default install path
+    $sofficePath = "C:\Program Files\LibreOffice\program\soffice.exe"
+    if (Test-Path $sofficePath) {
+        return $sofficePath
+    } else {
+        $sofficePath=$(read-host "Sorry, but we couldnt find libreoffice install. What we need is soffice.exe, usually at '$sofficePath'. Please enter the path for this manually now.")
+    }
+    return $sofficePath
+}
+function Get-LibrePortable {
+    param (
+        [string]$tmpfolder
+    )
+
+    $downloadUrl = "$LibrePortaInstall"
+    $downloadPath = Join-Path $tmpfolder "LibreOfficePortable.paf.exe"
+    $extractPath = Join-Path $tmpfolder "LibreOfficePortable"
+
+    if (!(Test-Path $extractPath)) {
+        New-Item -ItemType Directory -Path $extractPath | Out-Null
+    }
+
+    Invoke-WebRequest -Uri $downloadUrl -OutFile $downloadPath
+
+    Start-Process -FilePath $downloadPath -ArgumentList "/SILENT", "/NORESTART", "/SUPPRESSMSGBOXES", "/DIR=`"$extractPath`"" -Wait
+
+    $sofficePath = Join-Path $extractPath "App\libreoffice\program\soffice.exe"
+    if (Test-Path $sofficePath) {
+        return $sofficePath
+    } else {
+        $sofficePath=$(read-host "Sorry, but we couldnt find your poratable libreoffice install. What we need is soffice.exe, usually at $sofficePath")
+        $env:PATH = "$(Split-Path $sofficePath);$env:PATH"
+    }
+    return $sofficePath
 }

@@ -1,4 +1,42 @@
-function Set-HuduInstance {
+$CanConvertExtensions = @('.pdf','.doc','.docx','.xls','.xlsx','.ppt','.htm','.html','.pptx','.txt','.rtf','.jpg','.jpeg','.png')
+$ImageTypes           = @('.png', '.jpeg', '.jpg', '.gif', '.svg', '.bmp')
+$Direct2Doc           = @('.html','.htm')   # both with leading dot
+
+$DisallowedForConvert = @(
+  '.mp3','.wav','.flac','.aac','.ogg','.wma','.m4a',
+  '.dll','.so','.lib','.bin','.class','.pyc','.pyo','.o','.obj',
+  '.exe','.msi','.bat','.cmd','.sh','.jar','.app','.apk','.dmg','.iso','.img',
+  '.zip','.rar','.7z','.tar','.gz','.bz2','.xz','.tgz','.lz',
+  '.mp4','.avi','.mov','.wmv','.mkv','.webm','.flv',
+  '.psd','.ai','.eps','.indd','.sketch','.fig','.xd','.blend',
+  '.ds_store','.thumbs','.lnk','.heic'
+)
+
+# --- case-insensitive sets ---
+$cmp = [StringComparer]::OrdinalIgnoreCase
+
+$CanConvertSet     = [Collections.Generic.HashSet[string]]::new($cmp)
+$ImageSet          = [Collections.Generic.HashSet[string]]::new($cmp)
+$NonConvertableSet = [Collections.Generic.HashSet[string]]::new($cmp)
+$Direct2DocSet     = [Collections.Generic.HashSet[string]]::new($cmp)
+
+# CAST to [string[]] so the right overload is picked
+$CanConvertSet.UnionWith([string[]]$CanConvertExtensions)
+$ImageSet.UnionWith([string[]]$ImageTypes)
+$NonConvertableSet.UnionWith([string[]]$DisallowedForConvert)
+$Direct2DocSet.UnionWith([string[]]$Direct2Doc)
+# Libre Set-Up
+$portableLibreOffice=$false
+$LibreFullInstall="https://www.libreoffice.org/donate/dl/win-x86_64/25.2.4/en-US/LibreOffice_25.2.4_Win_x86-64.msi"
+$LibrePortaInstall="https://download.documentfoundation.org/libreoffice/portable/25.2.3/LibreOfficePortable_25.2.3_MultilingualStandard.paf.exe"
+
+# Poppler Setup
+$includeHiddenText=$true
+$includeComplexLayouts=$true
+$PopplerBins=$(join-path $project_workdir "tools\poppler")
+$PDFToHTML=$(join-path $PopplerBins "pdftohtml.exe")
+
+function Set-HuduInstance { 
     $HuduBaseURL = $HuduBaseURL ?? 
         $((Read-Host -Prompt 'Set the base domain of your Hudu instance (e.g https://myinstance.huducloud.com)') -replace '[\\/]+$', '') -replace '^(?!https://)', 'https://'
     $HuduAPIKey = $HuduAPIKey ?? "$(read-host "Please Enter Hudu API Key")"
