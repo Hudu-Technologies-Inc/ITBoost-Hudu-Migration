@@ -4,8 +4,9 @@ last_name="Last Name"
 contact_type="Contact Type"
 location="Location"
 primary_phone = "Phones"
-primary_email = "Emails"
+primary_email = "Email"
 notes = "Notes"
+title = "Title"
 
 }
 
@@ -33,26 +34,57 @@ if ($ITBoostData.ContainsKey("contacts")){
     } catch {
         $allHuduContacts=@()
     }
-   foreach ($company in $groupedContacts.GetEnumerator().Name){
-        $contactsForCompany=$groupedContacts["$company"]
-        $matchedCompany = $huduCompanies | where-object {($_.name -eq $row.organization) -or [bool]$(Test-NameEquivalent -A $_.name -B $company)} | Select-Object -First 1
-        $matchedCompany=$matchedCompany ?? $(Select-ObjectFromList -objects $huduCompanies -message "Which company to match for source company, named $company")
-        write-host "$($contactsforcompany.count) contacts for $company, hudu company id: $($matchedCompany.id)"
+   $contactIndex    = Build-HuduContactIndex -Contacts $allHuduContacts    
+    foreach ($company in $groupedContacts.Keys) {
+        write-host "starting $company"
+        $contactsForCompany = $groupedContacts[$company]
+        $matchedCompany = $huduCompanies | where-object {
+            ($_.name -eq $company) -or
+            [bool]$(Test-NameEquivalent -A $_.name -B "*$($company)*") -or
+            [bool]$(Test-NameEquivalent -A $_.nickname -B "*$($company)*")} | Select-Object -First 1
+        $matchedCompany = $huduCompanies | Where-Object {
+            $_.name -eq $company -or
+            (Test-NameEquivalent -A $_.name -B "*$company*") -or
+            (Test-NameEquivalent -A $_.nickname -B "*$company*")
+            } | Select-Object -First 1
+
+            $matchedCompany = $matchedCompany ?? (Get-HuduCompanies -Name $company | Select-Object -First 1)
+
+        if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { continue }
         foreach ($companyContact in $contactsForCompany){
-            $matchedcontact = $allHuduContacts | where-object {$_.company_id -eq $matchedCompany.id -and 
-                $($(Test-NameEquivalent -A $_.name -B $companyContact.name) -or
-                 $(Test-NameEquivalent -A $companyContact.address_1 -B $($_.fields | where-object {$_.label -ilike "address"} | select-object -first 1).value))} | select-object -first 1
+            $matchedContact = Find-HuduContact `
+            -CompanyId  $matchedCompany.id `
+            -FirstName  $companyContact.first_name `
+            -LastName   $companyContact.last_name `
+            -Email      $companyContact.primary_email `
+            -Phone      $companyContact.primary_phone `
+            -Index      $contactIndex
+
+            # Optional fallback to API search by name if still null:
+            if (-not $matchedContact -and ($companyContact.first_name -or $companyContact.last_name)) {
+            $qName = ("{0} {1}" -f $companyContact.first_name, $companyContact.last_name).Trim()
+            $matchedContact = Get-HuduAssets -AssetLayoutId $contactsLayout.id -CompanyId $matchedCompany.id -Name $qName |
+                                Select-Object -First 1
+            }
             if ($matchedcontact){
-                Write-Host "Matched $($companyContact.name) to $($matchedcontact.name) for $($matchedCompany.name)"
-                $ITBoostData.contacts["matches"]+=@{
-                    CompanyName=$companyContact.organization
-                    CsvRow=$companyContact.CsvRow
-                    ITBID=$row.id
-                    HuduID=$MatchedWebsite.id
-                    HuduObject=$MatchedWebsite
-                    HuduCompanyId=$matchedcontact.company_id
-                    PasswordsToCreate=$($companyContact.password ?? @())
-                }
+                    $humanName = ("{0} {1}" -f $companyContact.first_name, $companyContact.last_name).Trim()
+                    Write-Host "Matched $humanName to $($matchedcontact.name) for $($matchedCompany.name)"
+
+                    # ensure the array exists once
+                    if (-not $ITBoostData.contacts.ContainsKey('matches')) { $ITBoostData.contacts['matches'] = @() }
+
+                    $ITBoostData.contacts['matches'] += @{
+                        CompanyName      = $companyContact.organization
+                        CsvRow           = $companyContact.CsvRow
+                        ITBID            = $companyContact.id
+                        Name             = $humanName
+                        HuduID           = $matchedcontact.id
+                        HuduObject       = $matchedcontact
+                        HuduCompanyId    = $matchedcontact.company_id
+                        PasswordsToCreate= ($companyContact.password ?? @())
+                    }
+                    continue
+
             } else {
                 $newcontactrequest=@{
                     Name="$($companyContact.first_name) $($companyContact.last_name)".Trim()
@@ -61,31 +93,41 @@ if ($ITBoostData.ContainsKey("contacts")){
                 }
                 if ($false -eq $UseSimpleMap){
                     $newcontactrequest["Fields"]=Build-FieldsFromRow -row $companyContact -layoutFields $contactsFields -companyId $matchedCompany.id
+                
                 } else {
                     $fields = @()
-                    foreach ($key in $ContactsMap.GetEnumerator().name | where-object {$_ -ne "location"}){
-                        $rowVal = $companyContact.CsvRow.$key ?? $null
-                        if ([string]::IsNullOrEmpty($rowVal)){continue}
-                        $huduField = $contactsMap[$key]
-                        $fields+=@{$hudufield = $rowVal}
-                    }
-                    $newcontactrequest["Fields"]=$fields
-                    if (-not $([string]::IsNullOrEmpty($companyContact.CsvRow.location))){
-                        $matchedLocation = Get-HuduAssets -AssetLayoutId $locationLayout.id -CompanyId $matchedCompany.id | where-object {$_.name -ilike "*$($companyContact.CsvRow.location)*"} | Select-Object -first 1
-                        if ($matchedLocation) {
-                            $newcontactrequest["Location"]=$matchedLocation.id
+                    foreach ($key in $ContactsMap.Keys | where-object {$_ -ne "location"}) {
+                        # pull value from CSV row
+                        $rowVal = $companyContact.$key ?? $null
+                        if ($null -eq $rowVal) { continue }
+                        $rowVal = [string]$rowVal
+                        if ([string]::IsNullOrWhiteSpace($rowVal)) { continue }
+
+                        $huduField = $ContactsMap[$key]
+                        $fields+=@{ $($huduField) = $rowVal.Trim() }
                         }
+
+                        if (-not $([string]::IsNullOrWhiteSpace($companyContact.location))){
+                                $matchedlocation = Get-HuduAssets -AssetLayoutId ($LocationLayout.id ?? 2) -CompanyId $matchedCompany.id |
+                                                Where-Object { Test-NameEquivalent -A $_.name -B $companyContact.location } |
+                                                Select-Object -First 1
+                                               if ($matchedlocation){
+                                $fields+=@{"Location" = "[$($matchedlocation.id)]"}
+                            }
+                        }
+                        $newcontactrequest["Fields"]=$fields
+
                     }
+
 
 
                 }
 
-                $newcontactrequest.Fields | ConvertTo-Json -depth 99 | out-file $(join-path $contacts_folder "$($companyContact.id).json")
 
                 try {
                     $newContact = New-Huduasset @newcontactrequest
                 } catch {
-                    write-host "Error creating location: $_"xw
+                    write-host "Error creating location: $_"
                 }
                 if ($newContact){
                     $ITBoostData.contacts["matches"]+=@{
@@ -102,5 +144,8 @@ if ($ITBoostData.ContainsKey("contacts")){
             }
         }
     }
+ else {write-host "no contacts in CSV! skipping."} 
 
-} else {write-host "no contacts in CSV! skipping."} 
+foreach ($dupecontact in $(Get-HuduAssets -AssetLayoutId $contactsLayout.id | Group-Object { '{0}|{1}' -f $_.company_id, (($_.'name' -as [string]).Trim() -replace '\s+',' ').ToLower() } | Where-Object Count -gt 1 | ForEach-Object { $_.Group | Sort-Object id | Select-Object -Skip 1 } )){
+    if ($dupecontact.archived -eq $true){continue}
+    Remove-HuduAsset -id $dupecontact.id -CompanyId $dupecontact.company_id -Confirm:$false}

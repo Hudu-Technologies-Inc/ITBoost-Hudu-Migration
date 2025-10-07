@@ -10,7 +10,7 @@ phone = "Phone"
 fax = "Fax"
 
 }
-if ($ITBoostData.ContainsKey("domains")){
+if ($ITBoostData.ContainsKey("locations")){
 
     $LocationLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "location" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "branch" -Haystack $_.name)) } | Select-Object -First 1
 
@@ -40,7 +40,8 @@ if ($ITBoostData.ContainsKey("domains")){
         $locationsSeen = @()
         $locationsForCompany=$groupedLocations["$company"]
         $matchedCompany = $huduCompanies | where-object {($_.name -eq $row.organization) -or [bool]$(Test-NameEquivalent -A $_.name -B $company)} | Select-Object -First 1
-        $matchedCompany=$matchedCompany ?? $(Select-ObjectFromList -objects $huduCompanies -message "Which company to match for source company, named $company")
+        if (-not $matchedCompany) {$matchedCompany = $(New-HuduCompany -name "$($row.organization)" -AddressLine1 "$($row.address_1)" -AddressLine2 "$($row.address_2)" -city "$($row.city)" -State "$($row.region)" -Zip "$($row.postal_code)" -CountryName "$($row.country)" -Notes $("$($row.notes)") -replace "[]","imported from ITBoost").company}
+        # $matchedCompany=$matchedCompany ?? $($huducompanies | where-object {$_.name -eq $(Select-ObjectFromList -objects $($huduCompanies.name | sort-object) -message "Which company to match for source company, named $company")} | select-object -first 1)
         write-host "$($locationsForCompany.count) locations for $company, hudu company id: $($matchedCompany.id)"
         foreach ($companyLocation in $locationsForCompany){
             if ($locationsSeen -contains $companyLocation.name){continue} else {$locationsSeen+="$($companyLocation.name)"}
@@ -69,16 +70,20 @@ if ($ITBoostData.ContainsKey("domains")){
                     $NewAddressRequest["Fields"]=Build-FieldsFromRow -row $companyLocation -layoutFields $locationfields  -companyId $matchedCompany.id
                 } else {
                     $fields = @()
-                    foreach ($key in $LocationsMap.GetEnumerator().name ){
-                        $rowVal = $companyLocation.CsvRow.$key ?? $null
-                        if ([string]::IsNullOrEmpty($rowVal)){continue}
-                        $huduField = $LocationsMap[$key]
-                        $fields+=@{$hudufield = $rowVal}
+                    $fields = foreach ($key in $LocationsMap.Keys) {
+                    # pull value from CSV row
+                    $rowVal = $row.$key ?? $null
+                    if ($null -eq $rowVal) { continue }
+                    $rowVal = [string]$rowVal
+                    if ([string]::IsNullOrWhiteSpace($rowVal)) { continue }
+
+                    $huduField = $LocationsMap[$key]
+                    [ordered]@{ $($huduField) = $rowVal.Trim() }
                     }
+
                     $NewAddressRequest["Fields"]=$fields
                 }
 
-                $NewAddressRequest.Fields | ConvertTo-Json -depth 99 | out-file $(join-path $locations_folder "$($companyLocation.id).json")
 
                 try {
                     $newLocation = New-Huduasset @NewAddressRequest

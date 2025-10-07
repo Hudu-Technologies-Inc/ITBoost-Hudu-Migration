@@ -32,6 +32,140 @@ $FIELD_SYNONYMS = @(
 $truthy = '(?ix)\b(?:y|yes|yeah|yep|true|t|on|ok|okay|enable|enabled|active)\b|(?<!\d)1(?!\d)'
 $falsy  = '(?ix)\b(?:n|no|nope|false|f|off|disable|disabled|inactive)\b|(?<!\d)0(?!\d)'
 
+# --- Label synonyms you might see in your layout(s)
+$FIRSTNAME_LABELS = @('first name','firstname','given name','forename')
+$LASTNAME_LABELS  = @('last name','lastname','surname','family name')
+$EMAIL_LABELS     = @('email','e-mail','primary email','work email')
+$PHONE_LABELS     = @('phone','phone number','primary phone','work phone','office phone','mobile','cell','cell phone')
+
+function Get-HuduFieldValue {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][object]$Asset,
+    [Parameter(Mandatory)][string[]]$Labels
+  )
+  $labelsLC = $Labels | ForEach-Object { $_.ToLower() }
+  $Asset.fields |
+    Where-Object { $_.label -and $labelsLC -contains ([string]$_.label).ToLower() } |
+    Select-Object -First 1 -ExpandProperty value
+}
+
+function Normalize-Name([string]$s){
+  if ([string]::IsNullOrWhiteSpace($s)) { return $null }
+  (($s -replace '[^A-Za-z0-9\s]', ' ') -replace '\s+', ' ').Trim().ToLower()
+}
+function Normalize-Email([string]$s){
+  if ([string]::IsNullOrWhiteSpace($s)) { return $null }
+  $s.Trim().ToLower()
+}
+function Normalize-Phone([string]$s){
+  if ([string]::IsNullOrWhiteSpace($s)) { return $null }
+  ($s -replace '\D','')  # keep digits only
+}
+
+function Build-HuduContactIndex {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][object[]]$Contacts)
+
+  $idx = @{
+    ByName  = @{}
+    ByEmail = @{}
+    ByPhone = @{}
+  }
+
+  foreach($c in $Contacts){
+    $cid = $c.company_id
+
+    # Name index from First+Last if present, else asset.name
+    $fn = Get-HuduFieldValue -Asset $c -Labels $FIRSTNAME_LABELS
+    $ln = Get-HuduFieldValue -Asset $c -Labels $LASTNAME_LABELS
+    $nameKey = if ($fn -or $ln) { Normalize-Name "$fn $ln" } else { Normalize-Name $c.name }
+    if ($nameKey) {
+      $k = "$cid|$nameKey"
+      if (-not $idx.ByName.ContainsKey($k)) { $idx.ByName[$k] = @() }
+      $idx.ByName[$k] += $c
+    }
+
+    # Email index
+    $em = Get-HuduFieldValue -Asset $c -Labels $EMAIL_LABELS
+    $emKey = Normalize-Email $em
+    if ($emKey) {
+      $k = "$cid|$emKey"
+      if (-not $idx.ByEmail.ContainsKey($k)) { $idx.ByEmail[$k] = @() }
+      $idx.ByEmail[$k] += $c
+    }
+
+    # Phone index
+    $ph = Get-HuduFieldValue -Asset $c -Labels $PHONE_LABELS
+    $phKey = Normalize-Phone $ph
+    if ($phKey) {
+      $k = "$cid|$phKey"
+      if (-not $idx.ByPhone.ContainsKey($k)) { $idx.ByPhone[$k] = @() }
+      $idx.ByPhone[$k] += $c
+    }
+  }
+
+  return $idx
+}
+
+function Find-HuduContact {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][int]$CompanyId,
+    [string]$FirstName,
+    [string]$LastName,
+    [string]$Email,
+    [string]$Phone,
+    [Parameter(Mandatory)][hashtable]$Index,
+    [int]$ScoreThreshold = 50
+  )
+
+  $cands = @()
+
+  if ($Email) {
+    $k = "$CompanyId|$(Normalize-Email $Email)"
+    if ($Index.ByEmail.ContainsKey($k)) { $cands += $Index.ByEmail[$k] }
+  }
+  if ($FirstName -or $LastName) {
+    $k = "$CompanyId|$(Normalize-Name "$FirstName $LastName")"
+    if ($Index.ByName.ContainsKey($k)) { $cands += $Index.ByName[$k] }
+  }
+  if ($Phone) {
+    $k = "$CompanyId|$(Normalize-Phone $Phone)"
+    if ($Index.ByPhone.ContainsKey($k)) { $cands += $Index.ByPhone[$k] }
+  }
+
+  $cands = $cands | Select-Object -Unique
+  if (-not $cands) { return $null }
+
+  # score candidates
+  $scored = foreach($a in $cands){
+    $score = 0; $reasons = @()
+
+    if ($Email) {
+      $ae = Normalize-Email (Get-HuduFieldValue -Asset $a -Labels $EMAIL_LABELS)
+      if ($ae -and $ae -eq (Normalize-Email $Email)) { $score += 100; $reasons += 'email' }
+    }
+    if ($FirstName -or $LastName) {
+      $afn = Get-HuduFieldValue -Asset $a -Labels $FIRSTNAME_LABELS
+      $aln = Get-HuduFieldValue -Asset $a -Labels $LASTNAME_LABELS
+      $assetFull = Normalize-Name "$afn $aln"
+      $wantFull  = Normalize-Name "$FirstName $LastName"
+      if ($assetFull -and $wantFull -and $assetFull -eq $wantFull) { $score += 50; $reasons += 'name' }
+      elseif ((Normalize-Name $a.name) -eq $wantFull) { $score += 40; $reasons += 'asset.name' }
+    }
+    if ($Phone) {
+      $ap = Normalize-Phone (Get-HuduFieldValue -Asset $a -Labels $PHONE_LABELS)
+      if ($ap -and $ap -eq (Normalize-Phone $Phone)) { $score += 40; $reasons += 'phone' }
+    }
+
+    [pscustomobject]@{ Asset=$a; Score=$score; Reasons=$reasons -join ',' }
+  }
+
+  $best = $scored | Sort-Object Score -Descending | Select-Object -First 1
+  if ($best.Score -ge $ScoreThreshold) { return $best.Asset } else { return $null }
+}
+
 function Normalize-Text {
     param([string]$s)
     if ([string]::IsNullOrWhiteSpace($s)) { return $null }
