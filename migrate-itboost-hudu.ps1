@@ -1,6 +1,16 @@
 $project_workdir=$project_workdir ?? $PSScriptRoot
 $toolsPath = resolve-path .\tools\
+$project_workdir=$PSScriptRoot
+$debug_folder=$(join-path "$project_workdir" "debug")
+$locations_folder=$(join-path $debug_folder "locations")
+$contacts_folder=$(join-path $debug_folder "contacts")
+$docs_folder=$(join-path $project_workdir "docs")
 
+
+foreach ($folder in @($debug_folder, $contacts_folder, $locations_folder, $docs_folder)) {
+    if (!(Test-Path -Path "$folder")) { New-Item "$folder" -ItemType Directory }
+    Get-ChildItem -Path "$folder" -File -Recurse -Force | Remove-Item -Force
+}
 $ITBoostExportPath=$ITBoostExportPath ?? "C:\tmp\ITBoost"
 while (-not $(test-path $ITBoostExportPath)){
     $ITBoostExportPath=$(read-host "please specify your ITBoost export path and make sure it contains csvs!")

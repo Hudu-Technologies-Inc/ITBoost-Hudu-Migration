@@ -1,4 +1,25 @@
+function Get-AbsolutePath {
+  param(
+    [Parameter(Mandatory)]$PathOrInfo,
+    [string]$BaseFolder  # e.g. $match.folder
+  )
+  if ($PathOrInfo -is [IO.FileInfo]) { return $PathOrInfo.FullName }
 
+  $p = [string]$PathOrInfo
+  if ([string]::IsNullOrWhiteSpace($p)) { return $null }
+
+  if ([IO.Path]::IsPathRooted($p)) {
+    try { return (Resolve-Path -LiteralPath $p -ErrorAction Stop).Path } catch { return $p }
+  }
+
+  if ($BaseFolder) {
+    $cand = Join-Path $BaseFolder $p
+    if (Test-Path -LiteralPath $cand) { return (Resolve-Path -LiteralPath $cand).Path }
+  }
+
+  # last resort: try current location
+  try { return (Resolve-Path -LiteralPath $p -ErrorAction Stop).Path } catch { return $p }
+}
 function Get-NormalizedExtension {
   param([Parameter(Mandatory)]$PathOrExt)
 
