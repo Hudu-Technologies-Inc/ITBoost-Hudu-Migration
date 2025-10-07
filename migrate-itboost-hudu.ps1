@@ -1,3 +1,5 @@
+$project_workdir=$project_workdir ?? $PSScriptRoot
+
 
 $ITBoostExportPath=$ITBoostExportPath ?? "C:\tmp\ITBoost"
 while (-not $(test-path $ITBoostExportPath)){

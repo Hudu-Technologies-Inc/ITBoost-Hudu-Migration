@@ -7,7 +7,6 @@ primary_phone = "Phones"
 primary_email = "Email"
 notes = "Notes"
 title = "Title"
-
 }
 
 
