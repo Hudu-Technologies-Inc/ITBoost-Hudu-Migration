@@ -105,13 +105,13 @@ function Get-DocumentFilesForRow {
     (($s -replace '[^\p{L}\p{Nd}]+',' ') -replace '\s+',' ').Trim().ToLower()
   }
 
-  $candidates = @()
+  $candidates = [System.Collections.Generic.List[object]]::new()
 
   # 1) Indexed resolve (if available)
   if ($FolderIndex -and (Get-Command Resolve-DocFolder -ErrorAction SilentlyContinue)) {
     $hit = Resolve-DocFolder -Row $Row -Index $FolderIndex
     if ($hit) {
-      $candidates += [pscustomobject]@{ Path=$hit.Path; Score=[int]$hit.Confidence; Reason=$hit.Reason }
+      $candidates.add( [pscustomobject]@{ Path=$hit.Path; Score=[int]$hit.Confidence; Reason=$hit.Reason })
     }
   }
 
@@ -130,7 +130,7 @@ function Get-DocumentFilesForRow {
             Where-Object { $_.Name -like $like } |
             Select-Object -First 5
     foreach($d in $dirs){
-      $candidates += [pscustomobject]@{ Path=$d.FullName; Score=$weight; Reason=$reason }
+      $candidates.add([pscustomobject]@{ Path=$d.FullName; Score=$weight; Reason=$reason })
     }
   }
 
