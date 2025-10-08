@@ -3,7 +3,8 @@ $MaxFilesPerRow    = 200  # safety cap
 $AllowConvert = $allowConvert ?? $false
 $URLReplacement = [Collections.Generic.Dictionary[string,string]]::new([StringComparer]::OrdinalIgnoreCase)
 if (-not $pattern) { $pattern = '(?is)(<!doctype\s+html|<html\b|<meta[^>]+charset\s*=\s*["'']?utf-?8|content=["''][^"'']*text/html)' }
-Get-HuduArticles |
+if ($CleanupDupes -and $CleanupDupes -eq $true){
+    Get-HuduArticles |
  Group-Object { '{0}|{1}' -f ($_.company_id ?? -1), (([string]$_.name).Trim() -replace '\s+',' ').ToLower() } |
  Where-Object Count -gt 1 |
  ForEach-Object {
@@ -39,6 +40,8 @@ Get-HuduArticles |
      Invoke-HuduRequest -Method delete -Resource "/api/v1/uploads/$($_.id)"
    }
 }
+}
+$DeleteDocsMode = $DeleteDocsMode ?? $false
 
 function Add-Replacement {
   param([string]$Key, [string]$Value)
@@ -112,7 +115,20 @@ if ($ITBoostData.ContainsKey("documents")){
                     #     PasswordsToCreate= ($companydocument.password ?? @())
                     # }
                     # continue
+                if ($DeleteDocsMode -and $true -eq $DeleteDocsMode){
+                    write-host "Deleting uploads fo $($matcheddocument.id)"
+                    foreach ($u in $(Get-HuduUploads | where-object {$_.uploadable_type -eq 'Article' -and $_.uploadable_id -eq $matcheddocument.id})){
+                         Invoke-HuduRequest -Method delete -Resource "/api/v1/uploads/$($u.id)"
+                    }
+                    write-host "Deleting doc $($matcheddocument.id)"
+
+                    Remove-HuduArticle -Id $matcheddocument.id -Confirm:$false
+                }
+
             } 
+            if ($DeleteDocsMode -and $true -eq $DeleteDocsMode){continue}
+
+
                 $imagesCreated = @()
                 $uploadsAdded  = @()
                 $firstHtml = $null
