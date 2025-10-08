@@ -4,7 +4,7 @@ $project_workdir=$PSScriptRoot
 $debug_folder=$(join-path "$project_workdir" "debug")
 $locations_folder=$(join-path $debug_folder "locations")
 $contacts_folder=$(join-path $debug_folder "contacts")
-$docs_folder=$(join-path $project_workdir "docs")
+$docs_folder=$(join-path $debug_folder "docs")
 
 
 foreach ($folder in @($debug_folder, $contacts_folder, $locations_folder, $docs_folder)) {
@@ -31,7 +31,7 @@ $ITBoostData=@{
 }
 
 # foreach ($job in @("get-hududata","read-csvs","companies","websites","locations","contacts","configs","passwords","wrap-up")){
-foreach ($job in @("get-hududata","read-csvs","documents")){
+foreach ($job in @("get-hududata","read-csvs","configurations")){
     $ITBoostData.JobState = @{Status="$job"; StartedAt=$(Get-Date); FinishedAt=$null}
     write-host "Starting $($ITBoostdata.JobState.Status) at $($ITBoostdata.JobState.StartedAt)"
     . ".\jobs\$job.ps1"
