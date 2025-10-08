@@ -1,3 +1,5 @@
+
+
 function Get-AbsolutePath {
   param(
     [Parameter(Mandatory)]$PathOrInfo,
@@ -20,6 +22,7 @@ function Get-AbsolutePath {
   # last resort: try current location
   try { return (Resolve-Path -LiteralPath $p -ErrorAction Stop).Path } catch { return $p }
 }
+
 function Get-NormalizedExtension {
   param([Parameter(Mandatory)]$PathOrExt)
 
@@ -35,6 +38,33 @@ function Get-NormalizedExtension {
 # --- categorizer (Disallowed > Image > Allowed > Unknown) ---
 function Get-ExtensionCategory {
   param([Parameter(Mandatory)]$PathOrExt)
+    $CanConvertExtensions = @('.pdf','.doc','.docx','.xls','.xlsx','.ppt','.htm','.html','.pptx','.txt','.rtf','.jpg','.jpeg','.png')
+    $ImageTypes           = @('.png', '.jpeg', '.jpg', '.gif', '.svg', '.bmp')
+    $Direct2Doc           = @('.html','.htm')   # both with leading dot
+
+    $DisallowedForConvert = @(
+      '.mp3','.wav','.flac','.aac','.ogg','.wma','.m4a',
+      '.dll','.so','.lib','.bin','.class','.pyc','.pyo','.o','.obj',
+      '.exe','.msi','.bat','.cmd','.sh','.jar','.app','.apk','.dmg','.iso','.img',
+      '.zip','.rar','.7z','.tar','.gz','.bz2','.xz','.tgz','.lz',
+      '.mp4','.avi','.mov','.wmv','.mkv','.webm','.flv',
+      '.psd','.ai','.eps','.indd','.sketch','.fig','.xd','.blend',
+      '.ds_store','.thumbs','.lnk','.heic'
+    )
+
+    # --- case-insensitive sets ---
+    $cmp = [StringComparer]::OrdinalIgnoreCase
+
+    $CanConvertSet     = [Collections.Generic.HashSet[string]]::new($cmp)
+    $ImageSet          = [Collections.Generic.HashSet[string]]::new($cmp)
+    $NonConvertableSet = [Collections.Generic.HashSet[string]]::new($cmp)
+    $Direct2DocSet     = [Collections.Generic.HashSet[string]]::new($cmp)
+
+    # CAST to [string[]] so the right overload is picked
+    $CanConvertSet.UnionWith([string[]]$CanConvertExtensions)
+    $ImageSet.UnionWith([string[]]$ImageTypes)
+    $NonConvertableSet.UnionWith([string[]]$DisallowedForConvert)
+    $Direct2DocSet.UnionWith([string[]]$Direct2Doc)  
 
   $ext = Get-NormalizedExtension $PathOrExt
   if (-not $ext) { return 'Unknown' }
@@ -63,19 +93,21 @@ function Get-FileExt {
 function Get-DocumentFilesForRow {
   [CmdletBinding()]
   param(
-    [Parameter(Mandatory)][object]$Row,       # expects .locator, .name, .created_date (optional)
-    [Parameter(Mandatory)][string]$RootDocs,  # e.g. Join-Path $ITBoostExportPath 'documents'
-    [Parameter()][object[]]$FolderIndex       # from Build-DocFolderIndex (optional but recommended)
+    [Parameter(Mandatory)][object]$Row,                # expects .locator, .name
+    [Parameter(Mandatory)][string]$RootDocs,           # e.g. Join-Path $ITBoostExportPath 'documents'
+    [Parameter()][object[]]$FolderIndex,               # from Build-DocFolderIndex (optional)
+    [int]$MaxFilesPerRow = 200,
+    [int]$MinConfidence = 60
   )
 
-  # helper: normalize text for "like" matching
   function _norm([string]$s) {
     if ([string]::IsNullOrWhiteSpace($s)) { return $null }
     (($s -replace '[^\p{L}\p{Nd}]+',' ') -replace '\s+',' ').Trim().ToLower()
   }
 
-  # 1) Try indexed resolve (strongest, if you built index earlier)
   $candidates = @()
+
+  # 1) Indexed resolve (if available)
   if ($FolderIndex -and (Get-Command Resolve-DocFolder -ErrorAction SilentlyContinue)) {
     $hit = Resolve-DocFolder -Row $Row -Index $FolderIndex
     if ($hit) {
@@ -83,14 +115,16 @@ function Get-DocumentFilesForRow {
     }
   }
 
-  # 2) Fallbacks by folder name scans (bounded to RootDocs)
-  $loc   = [string]$Row.locator
-  $name  = [string]$Row.name
-  $nLoc  = _norm $loc
-  $nName = _norm $name
+  # 2) Fallback scans (bounded to RootDocs)
+  $loc  = [string]$Row.locator
+  $name = [string]$Row.name
 
-  # small local helper
-  function _addMatches($like, $weight, $reason) {
+  function _safeLike([string]$s) {
+    if ([string]::IsNullOrWhiteSpace($s)) { return $null }
+    # replace wildcard-breaking chars with '?'
+    "*$($s -replace '[\\/:*?""<>|]','?')*"
+  }
+  function _addMatches([string]$like, [int]$weight, [string]$reason) {
     if (-not $like) { return }
     $dirs = Get-ChildItem -Path $RootDocs -Recurse -Directory -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -like $like } |
@@ -100,66 +134,61 @@ function Get-DocumentFilesForRow {
     }
   }
 
-  # exacty-ish patterns (favor locator)
   if ($loc) {
-    _addMatches -like ("*{0}*" -f ($loc -replace '[\\/:*?\"<>|]','?'))  -weight 90 -reason 'like:locator'
-    _addMatches -like ("*DOC*{0}*" -f ($loc -replace '[\\/:*?\"<>|]','?')) -weight 88 -reason 'like:DOC+locator'
+    _addMatches (_safeLike $loc)              90 'like:locator'
+    _addMatches ("*DOC*$(( _safeLike $loc).Trim('*'))*") 88 'like:DOC+locator'
   }
   if ($name) {
-    _addMatches -like ("*DOC*{0}*" -f ($name -replace '[\\/:*?\"<>|]','?')) -weight 82 -reason 'like:DOC+name'
-    _addMatches -like ("*{0}*"    -f ($name -replace '[\\/:*?\"<>|]','?')) -weight 78 -reason 'like:name'
+    _addMatches ("*DOC*$(( _safeLike $name).Trim('*'))*") 82 'like:DOC+name'
+    _addMatches (_safeLike $name)             78 'like:name'
   }
 
-  # De-dupe candidate folders
+  # 3) De-dupe candidate folders
   $candidates = $candidates | Sort-Object Path -Unique
+  if (-not $candidates) {
+    return [pscustomobject]@{
+      itb_id=$Row.id; name=$Row.name; locator=$Row.locator
+      folder=$null; files=@(); confidence=0; reason='no-folders'
+    }
+  }
 
-  # 3) Tie-breaker scoring using created_date proximity and “DOC-” hint
-  $created = $null
-
+  # 4) Rank (THIS was missing in your code — emit an object!)
   $ranked = foreach ($c in $candidates) {
     $extra = 0
-    if ([IO.Path]::GetFileName($c.Path) -like 'doc*') { $extra += 5 }
-    if ($created) {
-      # prefer folders whose newest file timestamp is close to created_date
-      $newest = Get-ChildItem -Path $c.Path -File -Recurse -EA SilentlyContinue |
-                Sort-Object LastWriteTime -Descending | Select-Object -First 1
-      if ($newest) {
-        $days = [math]::Abs((($newest.LastWriteTime) - $created).TotalDays)
-        $extra += [int][math]::Max(0, 20 - [math]::Min(20,$days))  # 0..20 bonus
-      }
-    }
+    $leaf = [IO.Path]::GetFileName($c.Path)
+    if ($leaf -like 'doc*') { $extra += 5 }
     [pscustomobject]@{
       Path   = $c.Path
-      Score  = $c.Score + $extra
-      Reason = $c.Reason + ($(if($extra){"+signal"}))
+      Score  = [int]$c.Score + $extra
+      Reason = $c.Reason + ($(if($extra){'+signal'}))
     }
   }
 
-  $best = $ranked | Sort-Object Score -Descending | Select-Object -First 1
-  if (-not $best -or $best.Score -lt $MinConfidence) {
+  $rankedWithFiles = foreach ($r in ($ranked | Sort-Object Score -Descending)) {
+    $files = Get-ChildItem -Path $r.Path -File -Recurse -ErrorAction SilentlyContinue |
+             Select-Object -First $MaxFilesPerRow
+    [pscustomobject]@{ Path=$r.Path; Score=$r.Score; Reason=$r.Reason; Files=$files }
+  }
+
+  $chosen = $rankedWithFiles | Where-Object { $_.Files.Count -gt 0 } | Select-Object -First 1
+  if (-not $chosen) { $chosen = $rankedWithFiles | Select-Object -First 1 } # fallback even if no files
+
+  if (-not $chosen -or $chosen.Score -lt $MinConfidence) {
     return [pscustomobject]@{
-      itb_id     = $Row.id
-      name       = $Row.name
-      locator    = $Row.locator
-      folder     = $null
-      files      = @()
-      confidence = ($best?.Score ?? 0)
-      reason     = 'no-confident-match'
+      itb_id=$Row.id; name=$Row.name; locator=$Row.locator
+      folder=$chosen?.Path; files=@(); confidence=($chosen?.Score ?? 0)
+      reason = if ($chosen) { 'below-min-confidence' } else { 'no-candidates' }
     }
   }
-
-  # 4) Collect files safely from best folder
-  $files = Get-ChildItem -Path $best.Path -File -Recurse -EA SilentlyContinue |
-           Select-Object -First $MaxFilesPerRow
 
   [pscustomobject]@{
     itb_id     = $Row.id
     name       = $Row.name
     locator    = $Row.locator
-    folder     = $best.Path
-    files      = $files
-    confidence = $best.Score
-    reason     = $best.Reason
+    folder     = $chosen.Path
+    files      = $chosen.Files
+    confidence = $chosen.Score
+    reason     = $chosen.Reason
   }
 }
 

@@ -63,6 +63,12 @@ if ($ITBoostData.ContainsKey("documents")){
                      $($(Test-NameEquivalent -A $_.name -B $companydocument.name) -or 
                      $([double]$(Get-SimilaritySafe -A $_.name -B $companydocument.name) -ge 0.90))} | Select-Object -first 1
             $matchedDocument = $matchedDocument ?? $($(Get-HuduArticles -CompanyId $matchedCompany.id -name $companydocument.name) | Select-Object -first 1)
+            
+                $newdocumentrequest=@{
+                    Name="$($companydocument.name)".Trim()
+                    CompanyID = $matchedCompany.id
+                    Content="See Attachments for $($companydocument.name)"
+                }
             if ($matcheddocument){
                 Write-Host "matched $($companydocument.name) to doc in Hudu @ $($matchedDocument.url); updating"
                     # if (-not $ITBoostData.documents.ContainsKey('matches')) { $ITBoostData.documents['matches'] = @() }
@@ -84,11 +90,7 @@ if ($ITBoostData.ContainsKey("documents")){
                 $OutFile = "$docs_folder\$($companydocument.resource_id).html"
 
                 
-                $newdocumentrequest=@{
-                    Name="$($companydocument.name)".Trim()
-                    CompanyID = $matchedCompany.id
-                    Content="in-transit"
-                }
+
                 if ($matchedDocument){
                     $newdocumentrequest["Id"]=$matchedDocument.id
                 }
@@ -161,15 +163,15 @@ if ($ITBoostData.ContainsKey("documents")){
                     # todo - convert
                 }
 
-                # $existingRelated = Get-Huduuploads | where-object {$_.uploadable_type -eq "Article" -and [string]$_.uploadable_id -eq [string]$newdocumentrequest["Id"]}
+                $existingRelated = Get-Huduuploads | where-object {$_.uploadable_type -eq "Article" -and [string]$_.uploadable_id -eq [string]$newdocumentrequest["Id"]}
                 # IMAGES
                 foreach ($imageUpload in $imagesNeeded) {
-                    # $existingupload = $existingRelated | where-object {Test-NameEquivalent -A $_.name -B "$([IO.Path]::GetFileName(($imageUpload.File.FullName ?? $imageUpload.File)))".Trim()} | select-object -first 1
-                    # if ($existingupload -and $existingupload.url){
-                    #     Add-REplacement "$([IO.Path]::GetFileName(($up.File.FullName ?? $up.File)))" $existingupload.url
-                    #     write-host "Existing image $($existingupload.url) for $($companydocument.name)"
-                    #     continue
-                    # }
+                    $existingupload = $existingRelated | where-object {Test-NameEquivalent -A $_.name -B "$([IO.Path]::GetFileName(($imageUpload.File.FullName ?? $imageUpload.File)))".Trim()} | select-object -first 1
+                    if ($existingupload -and $existingupload.url){
+                        Add-REplacement "$([IO.Path]::GetFileName(($up.File.FullName ?? $up.File)))" $existingupload.url
+                        write-host "Existing image $($existingupload.url) for $($companydocument.name)"
+                        continue
+                    }
 
                     $srcPath = Get-AbsolutePath -PathOrInfo $imageUpload.File -BaseFolder $match.folder
                     if (-not (Test-Path -LiteralPath $srcPath)) { Write-Warning "Missing image: $srcPath"; continue }                    
@@ -187,12 +189,12 @@ if ($ITBoostData.ContainsKey("documents")){
 
                 # NON-IMAGE UPLOADS
                 foreach ($up in $uploadsNeeded) {
-                    # $existingupload = $existingRelated | where-object {Test-NameEquivalent -A $_.name -B "$([IO.Path]::GetFileName(($up.File.FullName ?? $up.File)))".Trim()} | select-object -first 1
-                    # if ($existingupload -and $existingupload.url){
-                    #     Add-REplacement "$([IO.Path]::GetFileName(($up.File.FullName ?? $up.File)))" $existingupload.url
-                    #     write-host "Existing upload $($existingupload.url) for $($companydocument.name)"
-                    #     continue
-                    # }
+                    $existingupload = $existingRelated | where-object {Test-NameEquivalent -A $_.name -B "$([IO.Path]::GetFileName(($up.File.FullName ?? $up.File)))".Trim()} | select-object -first 1
+                    if ($existingupload -and $existingupload.url){
+                        Add-REplacement "$([IO.Path]::GetFileName(($up.File.FullName ?? $up.File)))" $existingupload.url
+                        write-host "Existing upload $($existingupload.url) for $($companydocument.name)"
+                        continue
+                    }
 
                     $srcPath = Get-AbsolutePath -PathOrInfo $up.File -BaseFolder $match.folder
                     if (-not (Test-Path -LiteralPath $srcPath)) { Write-Warning "Missing upload: $srcPath"; continue }
@@ -215,6 +217,9 @@ if ($ITBoostData.ContainsKey("documents")){
                 } 
                 $newdocumentrequest['Content'] = As-HtmlString $DocContents
 
+                
+
+
                 try {
                     Write-host "$($($newdocumentrequest | convertto-json).ToString())"
                     $newdocument = Set-HuduArticle @newdocumentrequest
@@ -235,40 +240,5 @@ if ($ITBoostData.ContainsKey("documents")){
             }
         }
     }
-}
-# Get-HuduArticles |
-#  Group-Object { '{0}|{1}' -f ($_.company_id ?? -1), (([string]$_.name).Trim() -replace '\s+',' ').ToLower() } |
-#  Where-Object Count -gt 1 |
-#  ForEach-Object {
-#    $_.Group |
-#      Sort-Object `
-#        @{Expression={ $d=$_.updated_at ?? $_.created_at; try{[datetime]$d}catch{Get-Date '1900-01-01'} }; Descending=$true}, `
-#        @{Expression='id'; Descending=$true} |
-#      Select-Object -Skip 1
-#  } |
-#  Where-Object { $_.archived -ne $true } |
-#  ForEach-Object { Remove-HuduArticle -CompanyId $_.company_id -Id $_.id -Confirm:$false }
 
- 
-# (Get-HuduUploads) |
-#  Group-Object {
-#    $cid = $_.company_id
-#    $nm  = (([string]$_.name).Trim() -replace '\s+',' ').ToLower()
-#    if ($cid) { "{0}|{1}" -f $cid,$nm } else { $nm }
-#  } |
-#  Where-Object Count -gt 1 |
-#  ForEach-Object {
-#    $_.Group |
-#      Sort-Object `
-#        @{Expression={ $d=$_.created_at ?? $_.created_date; try{[datetime]$d}catch{Get-Date '1900-01-01'} }; Descending=$true}, `
-#        @{Expression='id'; Descending=$true} |
-#      Select-Object -Skip 1
-#  } |
-#  Where-Object { $_.archived_at -eq $null } |
-#  ForEach-Object {
-#    if (Get-Command Remove-HuduUpload -ErrorAction SilentlyContinue) {
-#      Remove-HuduUpload -Id $_.id -Confirm:$false
-#    } else {
-#      Invoke-HuduRequest -Method delete -Resource "/api/v1/uploads/$($_.id)"
-#    }
-# }
+}
