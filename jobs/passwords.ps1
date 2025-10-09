@@ -1,83 +1,85 @@
 $PassProps = @{
-resource_type= "PasswordType"
-username = "Username"
-password= "Password"
-notes = "Description"
-server = "URL"
+  resource_type = "PasswordType"   # verify this param name exists; many modules use PasswordTypeId or similar
+  username      = "Username"
+  password      = "Password"
+  notes         = "Description"    # confirm the param is Description (not Notes)
+  server        = "Url"            # many cmdlets use Url, not URL
 }
 
+if ($ITBoostData.ContainsKey("passwords")) {
+  $passwords = $ITBoostData.passwords.CSVData | Group-Object { $_.organization } -AsHashTable -AsString
 
-if ($ITBoostData.ContainsKey("passwords")){
-    $passwords = $ITBoostData.passwords.CSVData | Group-Object { $_.organization } -AsHashTable -AsString
-    try {
-        $allHudupasswords = Get-HuduPasswords
-    } catch {
-        $allHudupasswords=@()
-    }
-    foreach ($company in $passwords.Keys) {
-        write-host "starting $company"
-        $passwordsForCompany = $passwords[$company]
-        $matchedCompany = $huduCompanies | where-object {
-            ($_.name -eq $company) -or
-            [bool]$(Test-NameEquivalent -A $_.name -B "*$($company)*") -or
-            [bool]$(Test-NameEquivalent -A $_.nickname -B "*$($company)*")} | Select-Object -First 1
-        $matchedCompany = $huduCompanies | Where-Object {
-            $_.name -eq $company -or
-            (Test-NameEquivalent -A $_.name -B "*$company*") -or
-            (Test-NameEquivalent -A $_.nickname -B "*$company*")
-            } | Select-Object -First 1
+  try { $null = Get-HuduPasswords -ErrorAction Stop } catch { } # warm the pipe
 
-            $matchedCompany = $matchedCompany ?? (Get-HuduCompanies -Name $company | Select-Object -First 1)
+  foreach ($company in $passwords.Keys) {
+    Write-Host "starting $company"
+    $matchedCompany = $huduCompanies | Where-Object { $_.name -eq $company} | Select-Object -first 1
 
-        if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { continue }
-            $companypasswords =  Get-HuduPasswords -companyId $matchedCompany.id
-            $companyAssets = Get-HuduAssets -CompanyId $matchedCompany.id
-            $companyArticles = Get-HuduArticles -CompanyId $matchedCompany.id
-            $companyWebsites = Get-HuduWebsites | where-object {$_.company_id -eq $matchedCompany.id}
-        foreach ($companyPass in $passwordsForCompany){
-                $matchedpassword = $companypasswords | Where-Object {Test-NameEquivalent -A $_.name -$companyPass.name} | select-object -first 1
-                $matchedAsset =  $companyAssets | where-object {Test-NameEquivalent -A $_.name -B $companyPass.name} | select-object -first 1
-                $matchedArticle = $companyArticles | where-object {Test-NameEquivalent -A $_.name -B $companyPass.name} | select-object -first 1
-                $matchedWebsites= $companyWebsites | Where-Object {Test-NameEquivalent -A $($companyPass.server ?? $companypass.name) -B $_.name} | select-object -first 1
-                    $NewPasswordRequest=@{
-                    Name="$($companyPass.name)".Trim()
-                    CompanyID = $matchedCompany.id
-                }
-                if ($matchedpassword){
-                Write-host "matched pass $($matchedpassword.name)"
-                $NewPasswordRequest["Id"] = $matchedpassword.id
-                }
+    $matchedCompany = $matchedCompany ?? ($huduCompanies | Where-Object {
+      ($_.name -eq $company) -or
+      [bool](Test-NameEquivalent -A $_.name     -B "*$company*") -or
+      [bool](Test-NameEquivalent -A $_.nickname -B "*$company*")
+    } | Select-Object -First 1)
 
-                if ($matchedAsset){
-                    $asset = $matchedasset.asset ?? $matchedAsset
-                    $NewPasswordRequest["passwordable_id"]=$asset.id
-                    $NewPasswordRequest["passwordable_type"]="Asset"
-                }
-                elseif ($matchedArticle){
-                    $NewPasswordRequest["passwordable_id"]=$matchedArticle.id
-                    $NewPasswordRequest["passwordable_type"]="Article"
-                elseif ($matchedWebsites){
-                    $NewPasswordRequest["passwordable_id"]=$matchedCompany.id
-                    $NewPasswordRequest["passwordable_type"]="Company"
-                }
-                foreach ($prop in $PassProps.keys){
-                    if ([string]::IsNullOrEmpty($companypass.$prop)){continue}
-                    $keyname = $PassProps[$prop]
-                    $NewPasswordRequest[$keyname]=$companypass.$prop
-                }
+    $matchedCompany = $matchedCompany ?? (Get-HuduCompanies -Name $company | Select-Object -First 1)
 
+    $matchedCompany = $matchedCompany.company ?? $matchedCompany
 
-                try {
-                    if ($NewPasswordRequest.ContainsKey("Id") -and $NewPasswordRequest["Id"] -gt 0){
-                    $newpass = Set-HuduPassword @NewPasswordRequest
-                    } else {
-                    $newpass = New-HuduPassword @NewPasswordRequest
-                    }
-                } catch {
-                    write-host "Error creating location: $_"
-                }
+    Write-Host "Matched to company $($matchedCompany.name)"
+    if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { 
+            $createdcompany = New-HuduCompany -Name "$($company)".Trim()
+            $matchedcompany = Get-HuduCompanies -id $createdcompany.idtools
+            $matchedCompany = $matchedCompany.company ?? $matchedCompany
+         write-host "created company $($matchedCompany.name)"
+     }
 
-            }
+    $companyPasswords = Get-HuduPasswords -CompanyId $matchedCompany.id
+    $companyAssets    = Get-HuduAssets    -CompanyId $matchedCompany.id
+    $companyWebsites  = Get-HuduWebsites | Where-Object { $_.company_id -eq $matchedCompany.id }
+
+    foreach ($companyPass in $passwords[$company]) {
+      # try to find an existing password by name
+      $matchedPassword = $companyPasswords | Where-Object { Test-NameEquivalent -A $_.name -B $companyPass.name } | Select-Object -First 1
+      $matchedAsset    = $companyAssets   | Where-Object { Test-NameEquivalent -A $_.name -B $companyPass.name } | Select-Object -First 1
+      $matchedWebsite  = $companyWebsites | Where-Object { Test-NameEquivalent -A $_.name -B ($companyPass.server ?? $companyPass.name) } | Select-Object -First 1
+
+      $NewPasswordRequest = @{
+        Name      = "$($companyPass.name)".Trim()
+        CompanyId = $matchedCompany.id
+      }
+
+      if ($matchedPassword) {
+        Write-Host "matched existing password: $($matchedPassword.name)"
+        $NewPasswordRequest["Id"] = $matchedPassword.id
+      }
+
+      if     ($matchedAsset)   { $asset = $matchedAsset.asset ?? $matchedAsset; $NewPasswordRequest.passwordable_id = $asset.id;          $NewPasswordRequest.passwordable_type = "Asset"   }
+      elseif ($matchedWebsite) { $NewPasswordRequest.passwordable_id = $($matchedWebsite.website.id ?? $matchedWebsite.id);                                               $NewPasswordRequest.passwordable_type = "Website" }
+      else                     { $NewPasswordRequest.passwordable_id = $null;                                               $NewPasswordRequest.passwordable_type = $null }
+
+      foreach ($prop in $PassProps.Keys) {
+        $val = $companyPass.$prop
+        if ([string]::IsNullOrWhiteSpace([string]$val)) { continue }
+        $keyname = $PassProps[$prop]
+        $NewPasswordRequest[$keyname] = $val
+      }
+
+      Write-Host ($NewPasswordRequest | ConvertTo-Json -Depth 99)
+
+      try {
+        if ($NewPasswordRequest.ContainsKey("Id") -and $NewPasswordRequest["Id"] -gt 0) {
+          $newpass = Set-HuduPassword @NewPasswordRequest -ErrorAction Stop
+          Write-Host ("Updated: {0}" -f ($newpass | ConvertTo-Json -Depth 5))
         }
+        else {
+          $newpass = New-HuduPassword @NewPasswordRequest -ErrorAction Stop
+          Write-Host ("Created: {0}" -f ($newpass | ConvertTo-Json -Depth 5))
+        }
+      }
+      catch {
+        Write-Host "Error creating/updating password:"
+        $_ | Format-List * -Force | Out-String | Write-Host
+      }
     }
+  }
 }

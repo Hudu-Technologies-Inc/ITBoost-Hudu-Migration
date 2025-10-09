@@ -89,6 +89,7 @@ if ($ITBoostData.ContainsKey("configurations")){
         $matchedConfig = Get-HuduAssets -AssetLayoutId $configsLayout.id -CompanyId $matchedCompany.id -Name $companyConfig.name |
                         Select-Object -First 1
         }
+        if ($matchedConfig) {continue}
 
         # 4b) build request
         $newConfigRequest = @{

@@ -116,16 +116,22 @@ if ($ITBoostData.ContainsKey("documents")){
                     # }
                     # continue
                 if ($DeleteDocsMode -and $true -eq $DeleteDocsMode){
+                    if (-not $matchedDocument -or -not $matchedDocument.id -or $matchedDocument.id -lt 1){continue}
                     write-host "Deleting uploads fo $($matcheddocument.id)"
                     foreach ($u in $(Get-HuduUploads | where-object {$_.uploadable_type -eq 'Article' -and $_.uploadable_id -eq $matcheddocument.id})){
                          Invoke-HuduRequest -Method delete -Resource "/api/v1/uploads/$($u.id)"
                     }
                     write-host "Deleting doc $($matcheddocument.id)"
-
-                    Remove-HuduArticle -Id $matcheddocument.id -Confirm:$false
+                    if ($matcheddocument.Archived -eq $true){continue}
+                    
+                    try {
+                        Remove-HuduArticle -Id $matchedDocument.id -Confirm:$false
+                    } catch {
+                        Set-HuduArticleArchive -Id $matchedDocument.id
+                    }
                 }
 
-            } 
+            }
             if ($DeleteDocsMode -and $true -eq $DeleteDocsMode){continue}
 
 
