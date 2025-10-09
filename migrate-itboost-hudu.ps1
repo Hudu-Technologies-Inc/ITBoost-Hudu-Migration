@@ -5,7 +5,7 @@ $debug_folder=$(join-path "$project_workdir" "debug")
 $locations_folder=$(join-path $debug_folder "locations")
 $contacts_folder=$(join-path $debug_folder "contacts")
 $docs_folder=$(join-path $debug_folder "docs")
-
+$UseSimpleMap = $UseSimpleMap ?? $true
 
 foreach ($folder in @($debug_folder, $contacts_folder, $locations_folder, $docs_folder)) {
     if (!(Test-Path -Path "$folder")) { New-Item "$folder" -ItemType Directory }
