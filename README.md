@@ -12,34 +12,46 @@ Easy Migration from ITBoost to Hudu
 - Powershell 7.5.1 or later
 
 
-### Setup ITBoost
-
-You'll need to initiate a full-instance export (in advanced settings) to start. This may take a while, but when finished, you can extract the resulting .zip file to a destination of your choosing (best to use 7zip if possible)
-
-Then, you may want to take a look at your csv's. Namely, the configurations csv, which often has two columns named 'model' on the first line. You'll need to rename the first one to any unque name. I usually choose 'modelo'
-
-### Setup Hudu
-
-You'll need to add an API key that has full access, if possible.
-
 ## Getting Started
 
-### Launching Script
+You'll need just a few items to start
 
-Getting started is really as simple as starting the main script.
+### Environment File
+
+Make your own copy of the environ.example template (as .ps1 file) and record the following items:
+
+- `$hudubaseurl` (eg. ***https://myinstance.huducloud.com***),
+- `$huduapikey` (preferably with full-access)
+- `$ITBoostExportPath`, your absolute/full path to your ITBoost Export
+
+
+>Here's a snippet to move you in the right direction (make sure you're in project folder first)
+>```
+>copy .\environ.example .\environment1.ps1
+>notepad .\environment1.ps1
+>```
 
 ---
 
-There are a few ways to start. Probably the easiest way is to simply start the script with PowerShell.
+### Setup ITBoost
+
+You'll need to initiate a full-instance export (in advanced settings) to start. This may take a while, but when finished, you can extract the resulting .zip file to a destination of your choosing (best to use 7zip if possible).
+
+
+### Setup Hudu
+
+You'll need to add an API key that has full access, if possible. copy it to clipboard for later or add it to your environment file.
+
+## Getting Started
+
+If you've set up your environment file (and have named it with .ps1 extention), you can dot-source invoke that directly
 
 ```
- . .\migrate-itboost-hudu.ps1
+. .\environment1.ps1
 ```
-Alternatively, you can make a copy of the environment example file, edit in your values, and run when filled out.
+Otherwise, if you invoke the script directly, you'll be asked for required information directly.
 ```
-copy .\environ.example .\environment1.ps1
-notepad .\myenviron.ps1
-write-host "...everything is edited!"
- . .\migrate-itboost-hudu.ps1
+. .\migrate-itboost-hudu.ps1
 ```
+
 
