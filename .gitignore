@@ -3,3 +3,7 @@ ITBoost\*
 !*.example
 results.json
 *.json
+debug
+*debug/*
+*.json
+*.env
