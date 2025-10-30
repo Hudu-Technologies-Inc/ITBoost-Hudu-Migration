@@ -84,22 +84,6 @@ function Get-NetworkChain {
   $chain | Sort-Object { (Parse-Cidr $_.address).Prefix } -Descending
 }
 
-function Build-NetworkIndex {
-  param([Parameter(Mandatory)][object[]]$Networks)
-  $rows = @()
-  foreach ($n in @($Networks)) {
-    $cidrObj = if ($n.address) { Parse-Cidr $n.address } else { $null }
-    if ($cidrObj) {
-      $rows += [pscustomobject]@{ Network = $n; Cidr = $cidrObj }
-    } else {
-      # Log once but do not throw
-      Write-Host "Skip bad network address: $($n.address)" -ForegroundColor Yellow
-    }
-  }
-  # Always return an array (possibly empty), never $null
-  @($rows | Sort-Object { $_.Cidr.Prefix } -Descending)
-}
-
 # --- helpers for extraction / normalization -----------------------------------
 function Get-AsArray { param($x) if ($null -eq $x) { @() } elseif ($x -is [System.Collections.IEnumerable] -and -not ($x -is [string])) { @($x) } else { ,$x } }
 
@@ -317,9 +301,10 @@ function Guess-NetworksFromObservations {
 
   return $($cidrs | ForEach-Object { $_ })
 }
-
 function Compress-IntsToRanges {
-  param([Parameter(Mandatory)][int[]]$Ints)
+  param([int[]]$Ints) # not mandatory
+
+  if (-not $Ints -or $Ints.Count -eq 0) { return $null }
 
   $vals = $Ints | Where-Object { $_ -ge 1 -and $_ -le 4094 } | Sort-Object -Unique
   if ($vals.Count -eq 0) { return $null }
@@ -328,37 +313,108 @@ function Compress-IntsToRanges {
   $start = $vals[0]; $prev = $start
   for ($i = 1; $i -lt $vals.Count; $i++) {
     $cur = $vals[$i]
-    if ($cur -eq ($prev + 1)) {
-      $prev = $cur
-      continue
-    } else {
+    if ($cur -eq $prev + 1) { $prev = $cur; continue }
        if ($start -eq $prev) { $ranges.Add("$start") | Out-Null} else { $ranges.Add("$start-$prev") | Out-Null } 
-      $start = $prev = $cur
-    }
+    $start = $prev = $cur
   }
-  # flush last
   if ($start -eq $prev) { $ranges.Add("$start") | Out-Null } else { $ranges.Add("$start-$prev") | Out-Null } 
-  # join as comma list
   ($ranges -join ',')
 }
+function Build-NetworkIndex {
+  param([object[]]$Networks) # not mandatory
+  if (-not $Networks -or $Networks.Count -eq 0) { return @() }
 
+  $rows = @()
+  foreach ($n in @($Networks)) {
+    $cidrObj = if ($n.address) { Parse-Cidr $n.address } else { $null }
+    if ($cidrObj) { $rows += [pscustomobject]@{ Network = $n; Cidr = $cidrObj } }
+  }
+  @($rows | Sort-Object { $_.Cidr.Prefix } -Descending)
+}
+function Test-CidrEquivalent {
+  param([Parameter(Mandatory)][string]$A, [Parameter(Mandatory)][string]$B)
+  try {
+    $pa = Parse-Cidr $A
+    $pb = Parse-Cidr $B
+    return ($pa.Start -eq $pb.Start -and $pa.End -eq $pb.End)
+  } catch { $false }
+}
+
+function Test-Rfc1918 {
+  param([Parameter(Mandatory)][string]$Ip)
+  switch -regex ($Ip) {
+    '^10\.'                                  { return $true }
+    '^172\.(1[6-9]|2[0-9]|3[0-1])\.'         { return $true }
+    '^192\.168\.'                            { return $true }
+    default                                  { return $false }
+  }
+}
+
+function Ensure-Cidr {
+  param([Parameter(Mandatory)][string]$AddressOrHost, [int]$DefaultPrefix = 32)
+  if ($AddressOrHost -match '/\d{1,2}$') { return $AddressOrHost }
+  return "$AddressOrHost/$DefaultPrefix"
+}
+function Ensure-HuduIPAddress {
+  param(
+    [Parameter(Mandatory)][string]$Address,
+    [Parameter(Mandatory)][int]$CompanyId,
+    [Parameter(Mandatory)][int]$NetworkId,
+    [string]$Status,
+    [string]$FQDN,
+    [string]$Description='',
+    [string]$Notes='',
+    [int]$AssetId,
+    [bool]$SkipDNSValidation=$true
+  )
+
+  # Try to find existing IP by company+network+address (adjust if your API exposes a direct GET)
+  $existing = (Get-HuduIPAddresses -CompanyId $CompanyId -NetworkId $NetworkId) |
+              Where-Object { $_.address -eq $Address } | Select-Object -First 1
+  if ($existing) { return $existing }
+
+  New-HuduIPAddress -Address $Address -CompanyID $CompanyId -NetworkId $NetworkId `
+                    -Status $Status -FQDN $FQDN -Description $Description -Notes $Notes `
+                    -AssetID $AssetId -SkipDNSValidation:$SkipDNSValidation
+}
 function Ensure-HuduNetwork {
   param(
     [Parameter(Mandatory)][int]$CompanyId,
-    [Parameter(Mandatory)][string]$Address,   # CIDR
+    [Parameter(Mandatory)][string]$Address,   # host or CIDR
     [string]$Name,
-    [string]$Description
+    [string]$Description,
+    [int]$NetworkType # 0=private(default), 1=public
   )
+
+  $Address = $Address.Trim()
+  # If it's a public single host (no peers discovered), prefer /32 and network_type=1
+  $isHost   = ($Address -notmatch '/')
+  $isPublic = $isHost -and -not (Test-Rfc1918 -Ip $Address)
+  if ($isPublic) {
+    $Address     = Ensure-Cidr -AddressOrHost $Address -DefaultPrefix 32
+    $NetworkType = 1
+  } elseif ($Address -notmatch '/\d{1,2}$') {
+    # normalize any bare private host as /24 by default (tweak to your taste)
+    $Address = Ensure-Cidr -AddressOrHost $Address -DefaultPrefix 24
+  }
+
   $Name = $Name ?? $Address
-  # find equivalent existing
-  $existing = (Get-HuduNetworks -CompanyId $CompanyId) | Where-Object {
-    $_.address -eq $Address -or (Test-CidrContains -Outer $_.address -Inner $Address -and Test-CidrContains -Outer $Address -Inner $_.address)
+
+  $existing = Get-HuduNetworks -CompanyId $CompanyId | Where-Object {
+      if (-not $_.address) { return $false }
+
+      $same  = ($_.address -eq $Address)
+      $cover = (Test-CidrContains -Outer $_.address -Inner $Address) -and
+              (Test-CidrContains -Outer $Address     -Inner $_.address)
+
+      return ($same -or $cover)
   } | Select-Object -First 1
 
   if ($existing) { return $existing }
 
-  Write-Host "Creating Network $Address for company $CompanyId"
-  New-HuduNetwork -CompanyId $CompanyId -Name $Name -Address $Address -Description $Description
+  Write-Host "Creating Network $Address (type=$([string]($NetworkType ?? 0))) for company $CompanyId"
+  New-HuduNetwork -CompanyId $CompanyId -Name $Name -Address $Address `
+                  -Description $Description -NetworkType $NetworkType
 }
 
 function Ensure-HuduVlanZone {

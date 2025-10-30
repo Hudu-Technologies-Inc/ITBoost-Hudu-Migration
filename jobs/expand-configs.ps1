@@ -123,6 +123,15 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
                 Write-Host "Inferred $($cidrs.Count) candidate networks for $($matchedCompany.name): $($cidrs -join ', ')"
             }
 
+            #### LONE PUBLIC HOST
+            if (($cidrs.Count -eq 0) -and ($obs.Count -gt 0)) {
+            $publicSingles = $obs | Where-Object { -not (Test-Rfc1918 -Ip $_.IP) } |
+                                        Select-Object -ExpandProperty IP -Unique
+            foreach ($p in $publicSingles) {
+                $net = Ensure-HuduNetwork -CompanyId $matchedCompany.id -Address $p -Description 'Auto-imported (public host)'
+                if ($net) { $ensuredNetworks.Add($net) | Out-Null }
+            }
+            }
 
             Write-Host "Ensuring Zone for $($matchedCompany.name)"
             $zone = Ensure-HuduVlanZone -CompanyId $matchedCompany.id -ZoneName 'Auto-Imported'
@@ -135,41 +144,73 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
                 if ($net) { $ensuredNetworks.Add($net) | Out-Null }
             }
 
-            # 4) ensure VLANs when we saw vlan_ids on any iface
             # Gather VLANs from observations
             $seenVlans = @($obs | ForEach-Object { $_.VlanIds } | Where-Object { $_ } | Select-Object -Unique)
 
-            # Build a range string; if none found, you can:
-            #  a) skip zone creation until you actually see VLANs; or
-            #  b) create with default "1-4094".
-            $ranges = Compress-IntsToRanges -Ints $seenVlans
-            $zone   = Ensure-HuduVlanZone -CompanyId $matchedCompany.id -ZoneName 'Auto-Imported' -Ranges $ranges
-
-            # Create VLANs (attach zone only if we have one)
-            foreach ($vid in $seenVlans) {
-            if ($zone -and $zone.id) {
-                Ensure-HuduVlan -CompanyId $matchedCompany.id -VlanId $vid -ZoneId $zone.id -Name "VLAN $vid" | Out-Null
+            # Decide ranges for the zone
+            $ranges = if ($seenVlans.Count -gt 0) {
+            Compress-IntsToRanges -Ints $seenVlans
             } else {
+            # no VLAN hints → create a zone with a broad default
+            '1-4094'
+            }
+
+            $zone = Ensure-HuduVlanZone -CompanyId $matchedCompany.id -ZoneName 'Auto-Imported' -Ranges $ranges
+
+            # Create VLANs only if we actually saw any
+            if ($seenVlans.Count -gt 0) {
+            foreach ($vid in $seenVlans) {
+                if ($zone -and $zone.id) {
+                Ensure-HuduVlan -CompanyId $matchedCompany.id -VlanId $vid -ZoneId $zone.id -Name "VLAN $vid" | Out-Null
+                } else {
                 Ensure-HuduVlan -CompanyId $matchedCompany.id -VlanId $vid -Name "VLAN $vid" | Out-Null
+                }
             }
             }
 
+            # Ensure networks only if any were inferred/created
+            $ensuredNetworks = New-Object System.Collections.Generic.List[object]
+            foreach ($cidr in $cidrs) {
+            $net = Ensure-HuduNetwork -CompanyId $matchedCompany.id -Address $cidr -Name $cidr -Description 'Auto-imported from configurations'
+            if ($net) { $ensuredNetworks.Add($net) | Out-Null }
+            }
 
-            # (optional) 5) map IPs to networks using your existing indexers
+
+            
+            # Build index only if we have networks
+            $index = @()
+            if ($ensuredNetworks.Count -gt 0) {
             $index = Build-NetworkIndex -Networks $ensuredNetworks
+            }
+
+            # Only attempt lookup if we have an index and the function is in scope
+            if ($index.Count -gt 0 -and (Get-Command Find-NetworkForIp -ErrorAction SilentlyContinue)) {
             foreach ($o in $obs) {
-                Write-Host "processing gateways for IP $($o.IP)"
+                if ($o.Gateways -contains $o.IP) {
                 $n = Find-NetworkForIp -Ip $o.IP -NetworkIndex $index -CompanyId $matchedCompany.id
                 if ($n) {
-                # best-effort: attach metadata to network description or notes, or later create IP objects if supported
-                if ($o.Gateways -contains $o.IP) {
-                    # placeholder: no-op
+                    Write-Host "processing gateways for IP $($o.IP) in network $($n.address)"
+                    # (optional: annotate/default-gw handling here)
                 }
                 }
             }
             }
+            $index = if ($ensuredNetworks.Count -gt 0) { Build-NetworkIndex -Networks $ensuredNetworks } else { @() }
+
+            if ($index.Count -gt 0) {
+            # dedupe just the IPs you want to persist
+            $targetIps = $obs | ForEach-Object { $_.IP } | Where-Object { $_ } | Sort-Object -Unique
+            foreach ($ip in $targetIps) {
+                $net = Find-NetworkForIp -Ip $ip -NetworkIndex $index -CompanyId $matchedCompany.id
+                if ($null -eq $net) { continue }
+
+                $status = 'active'   # or infer from your source
+                Ensure-HuduIPAddress -Address $ip -CompanyId $matchedCompany.id -NetworkId $net.id -Status $status | Out-Null
+            }
+            }            
+
             if (@("ALL","RichText-Field") -contains $ConfigExpansionMethod){
-                # build html table from observations
+                # build html table from observations --- this is the easy part, use $obs-ervations or network$index
 
 
 
@@ -184,4 +225,4 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
 
         }
     }
-}
+}}
