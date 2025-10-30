@@ -100,47 +100,271 @@ function Build-NetworkIndex {
   @($rows | Sort-Object { $_.Cidr.Prefix } -Descending)
 }
 
-function Find-NetworkForIp {
-  param(
-    [Parameter(Mandatory)][string]$Ip,
-    [Parameter(Mandatory)][object[]]$NetworkIndex,
-    [int]$CompanyId = $null
-  )
-  if (-not $NetworkIndex) { return $null }   # guard
-  $ipU = Convert-IPv4ToUInt32 $Ip
-  if ($null -eq $ipU) { return $null }
+# --- helpers for extraction / normalization -----------------------------------
+function Get-AsArray { param($x) if ($null -eq $x) { @() } elseif ($x -is [System.Collections.IEnumerable] -and -not ($x -is [string])) { @($x) } else { ,$x } }
 
-  foreach ($row in $NetworkIndex) {
-    $n = $row.Network
-    if ($CompanyId -and $n.company_id -ne $CompanyId) { continue }
-    $c = $row.Cidr
-    if ($ipU -ge $c.Start -and $ipU -le $c.End) { return $n }
-  }
-  $null
+$__Ipv4Rx = '(?<!\d)(?:25[0-5]|2[0-4]\d|1?\d{1,2})(?:\.(?:25[0-5]|2[0-4]\d|1?\d{1,2})){3}(?!\d)'
+
+function Extract-IPv4sFromString {
+  param([string]$Text)
+  if ([string]::IsNullOrWhiteSpace($Text)) { return @() }
+  [regex]::Matches($Text, $__Ipv4Rx) | ForEach-Object { $_.Value } | Select-Object -Unique
 }
-function Group-IpAddressesByNetwork {
-  param(
-    [Parameter(Mandatory)][object[]]$IpAddresses,
-    [Parameter(Mandatory)][object[]]$Networks,
-    [int]$CompanyId = $null
-  )
 
-  $idx = Build-NetworkIndex -Networks $Networks
-  if ($null -eq $idx) { $idx = @() }  # harden
+function Extract-IPv4sFromInterfaces {
+  <#
+    Accepts many shapes:
+      - JSON string of objects: [{ "ip":"10.0.1.12", "mask":24, "vlan_id":10 }, ...]
+      - PSCustomObjects with properties: .ip / .address / .cidr / .mask / .netmask / .vlan / .vlan_id
+      - Mixed text blob (“eth0: 10.0.1.12/24 vlan 10”)
+    Returns objects with { IP, Prefix?, Netmask?, VlanId? }
+  #>
+  param($InterfacesValue)
 
-  $groups = @{}
-  foreach ($ip in @($IpAddresses)) {
-    if (-not $ip.address) { continue }
-    if ($CompanyId -and $ip.company_id -ne $CompanyId) { continue }
+  $results = New-Object System.Collections.Generic.List[object]
 
-    $net = Find-NetworkForIp -Ip $ip.address -NetworkIndex $idx -CompanyId $CompanyId
-    $key = if ($net) { "net:$($net.id)" } else { "unmatched" }
-
-    if (-not $groups.ContainsKey($key)) {
-      $groups[$key] = [pscustomobject]@{ Network = $net; IPs = New-Object System.Collections.Generic.List[object] }
+  foreach ($piece in (Get-AsArray $InterfacesValue)) {
+    $raw = $piece
+    # try JSON first
+    if ($raw -is [string] -and $raw.Trim().StartsWith('[')) {
+      try {
+        $arr = $raw | ConvertFrom-Json -ErrorAction Stop
+        foreach ($it in $arr) {
+          $ip  = $it.ip ?? $it.address
+          $cidr= $it.cidr
+          $mask= $it.mask ?? $it.netmask
+          $vid = $it.vlan_id ?? $it.vlan ?? $it.vlanId
+          if ($ip -and ($ip -match $__Ipv4Rx)) {
+            $o = [pscustomobject]@{
+              IP      = $ip
+              Prefix  = $cidr
+              Netmask = $mask
+              VlanId  = $vid
+            }
+            $results.Add($o) | Out-Null
+          }
+        }
+        continue
+      } catch {}
     }
-    $groups[$key].IPs.Add($ip) | Out-Null
+
+    # structured object (PSCustomObject/Hashtable)
+    if ($raw -isnot [string]) {
+      $ip  = $raw.ip ?? $raw.address ?? $raw.IP
+      $cidr= $raw.cidr ?? $raw.CIDR
+      $mask= $raw.mask ?? $raw.netmask ?? $raw.Netmask
+      $vid = $raw.vlan_id ?? $raw.vlan ?? $raw.VlanId ?? $raw.Vlan
+      if ($ip -and ($ip -match $__Ipv4Rx)) {
+        $results.Add([pscustomobject]@{ IP=$ip; Prefix=$cidr; Netmask=$mask; VlanId=$vid }) | Out-Null
+        continue
+      }
+    }
+
+    # fallback: parse any IPv4s out of strings
+    foreach ($ip in Extract-IPv4sFromString -Text ([string]$raw)) {
+      # try to detect /XX and vlan N around it
+      $prefix = ([regex]::Match([string]$raw, [regex]::Escape($ip) + '/(\d{1,2})')).Groups[1].Value
+      $vid    = ([regex]::Match([string]$raw, '\bvlan\s+(\d{1,4})\b', 'IgnoreCase')).Groups[1].Value
+      $results.Add([pscustomobject]@{
+        IP      = $ip
+        Prefix  = ($prefix ? [int]$prefix : $null)
+        Netmask = $null
+        VlanId  = ($vid ? [int]$vid : $null)
+      }) | Out-Null
+    }
   }
 
-  $groups.Values
+  $($results | ForEach-Object { $_ })
+}
+
+function Collect-CompanyIpObservations {
+  <#
+    Input: $ConfigCollection from your per-device loop
+    Output: @(
+      [pscustomobject]@{ IP='10.0.1.12'; Gateways=@('10.0.1.1'); Hostnames=@('PC-12'); VlanIds=@(10); ObservedMasks=@(24) }
+    )
+  #>
+  param(
+    [Parameter(Mandatory)] $ConfigCollection,
+    [string]$HostnameText = $null
+  )
+
+  $bucket = @{} # key = ip ; value = mutable psobj
+
+  # pull from “primary_ip”, “default_gateway”, and “configuration_interfaces”
+  foreach ($row in (Get-AsArray $ConfigCollection)) {
+    foreach ($ip in Extract-IPv4sFromString -Text ($row.primary_ip)) {
+      if (-not $bucket.ContainsKey($ip)) { $bucket[$ip] = [pscustomobject]@{ IP=$ip; Gateways=@(); Hostnames=@(); VlanIds=@(); ObservedMasks=@() } }
+    }
+
+    foreach ($gw in Extract-IPv4sFromString -Text ($row.default_gateway)) {
+      # try to associate gateway with peers in same /24 later; still record as an observed gateway
+      if (-not $bucket.ContainsKey($gw)) { $bucket[$gw] = [pscustomobject]@{ IP=$gw; Gateways=@(); Hostnames=@(); VlanIds=@(); ObservedMasks=@() } }
+      # mark it as a gateway (itself)
+      $bucket[$gw].Gateways += $gw
+    }
+
+    # interfaces (best source of vlan + prefix)
+    foreach ($iface in Extract-IPv4sFromInterfaces $row.configuration_interfaces) {
+      $ip = $iface.IP
+      if (-not $ip) { continue }
+      if (-not $bucket.ContainsKey($ip)) { $bucket[$ip] = [pscustomobject]@{ IP=$ip; Gateways=@(); Hostnames=@(); VlanIds=@(); ObservedMasks=@() } }
+      if ($iface.VlanId)   { $bucket[$ip].VlanIds += [int]$iface.VlanId }
+      if ($iface.Prefix)   { $bucket[$ip].ObservedMasks += [int]$iface.Prefix }
+      elseif ($iface.Netmask -match $__Ipv4Rx) {
+        # convert dotted mask to prefix
+        $prefix = ([System.Net.IPAddress]::Parse($iface.Netmask).GetAddressBytes() | ForEach-Object {
+          [Convert]::ToString($_,2).PadLeft(8,'0')
+        }) -join ''
+        $bucket[$ip].ObservedMasks += ($prefix.ToCharArray() | Where-Object { $_ -eq '1' } | Measure-Object).Count
+      }
+    }
+
+    if ($row.hostname) {
+      foreach ($ip in Extract-IPv4sFromString -Text ($row.primary_ip)) {
+        $bucket[$ip].Hostnames += "$($row.hostname)"
+      }
+    }
+  }
+
+  # optional: a hostname string passed in
+  if ($HostnameText) {
+    foreach ($ip in Extract-IPv4sFromString -Text $HostnameText) {
+      if (-not $bucket.ContainsKey($ip)) { $bucket[$ip] = [pscustomobject]@{ IP=$ip; Gateways=@(); Hostnames=@(); VlanIds=@(); ObservedMasks=@() } }
+    }
+  }
+
+  # dedupe lists
+  foreach ($k in $bucket.Keys) {
+    $bucket[$k].Gateways      = @($bucket[$k].Gateways      | Select-Object -Unique)
+    $bucket[$k].Hostnames     = @($bucket[$k].Hostnames     | Where-Object { $_ } | Select-Object -Unique)
+    $bucket[$k].VlanIds       = @($bucket[$k].VlanIds       | Where-Object { $_ -ne 0 } | Select-Object -Unique)
+    $bucket[$k].ObservedMasks = @($bucket[$k].ObservedMasks | Where-Object { $_ -ge 8 -and $_ -le 30 } | Select-Object -Unique)
+  }
+
+  $bucket.Values
+}
+
+function Guess-NetworksFromObservations {
+  <#
+    Strategy:
+      - If we see a gateway X.Y.Z.1 or .254 with peers sharing X.Y.Z.*, we propose /24 X.Y.Z.0/24.
+      - Else, if multiple ObservedMasks exist on hosts (e.g., 23 or 25), we honor the most common.
+      - Else, crowd cluster by first 3 octets (/24) when >= 2 hosts observed.
+    Returns unique CIDR strings.
+  #>
+  param([Parameter(Mandatory)]$Observations)
+
+  $cidrs = New-Object System.Collections.Generic.HashSet[string]
+
+  # group by /24 stem
+  $byStem = $Observations | Group-Object {
+    $parts = $_.IP.Split('.')
+    if ($parts.Length -eq 4) { "$($parts[0]).$($parts[1]).$($parts[2])" } else { 'other' }
+  }
+
+  foreach ($g in $byStem) {
+    if ($g.Name -eq 'other') { continue }
+    $peers = @($g.Group)
+
+    # gateway hint
+    $gwCandidates = $peers | Where-Object {
+      $_.IP -match '(\.1|\.254)$' -or ($_.Gateways -contains $_.IP)
+    }
+
+    $chosenPrefix = $null
+    $prefixVotes  = @{}
+    foreach ($o in $peers) {
+      foreach ($p in $o.ObservedMasks) {
+        $prefixVotes[$p] = 1 + ($prefixVotes[$p] ?? 0)
+      }
+    }
+    if ($prefixVotes.Keys.Count -gt 0) {
+      $chosenPrefix = ($prefixVotes.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1).Key
+    }
+
+    if (-not $chosenPrefix) {
+      if ($gwCandidates.Count -gt 0 -or $peers.Count -ge 2) { $chosenPrefix = 24 }
+    }
+
+    if ($chosenPrefix) {
+      $octets = $g.Name.Split('.')
+      $netStart = switch ($chosenPrefix) {
+        24 { "$($octets[0]).$($octets[1]).$($octets[2]).0" }
+        default {
+          # fallback to /24 if we don't implement fancy supernetting here
+          "$($octets[0]).$($octets[1]).$($octets[2]).0"
+        }
+      }
+      $cidrs.Add("$netStart/$chosenPrefix") | Out-Null
+    }
+  }
+
+  # also: when we have explicit prefix per observation (e.g., from / interfaces), honor those /32 or /30 (rare)
+  foreach ($o in $Observations) {
+    foreach ($p in $o.ObservedMasks) {
+      try {
+        # derive network base from host/prefix
+        $row = Parse-Cidr ("{0}/{1}" -f $o.IP, [int]$p)
+        # convert start to dotted
+        $bytes = [BitConverter]::GetBytes([uint32]$row.Start)
+        [Array]::Reverse($bytes)
+        $netIp = ([System.Net.IPAddress]::new($bytes)).ToString()
+        $cidrs.Add("$netIp/$p") | Out-Null
+      } catch {}
+    }
+  }
+
+  return $($cidrs | ForEach-Object { $_ })
+}
+
+
+function Ensure-HuduNetwork {
+  param(
+    [Parameter(Mandatory)][int]$CompanyId,
+    [Parameter(Mandatory)][string]$Address,   # CIDR
+    [string]$Name,
+    [string]$Description
+  )
+  $Name = $Name ?? $Address
+  # find equivalent existing
+  $existing = (Get-HuduNetworks -CompanyId $CompanyId) | Where-Object {
+    $_.address -eq $Address -or (Test-CidrContains -Outer $_.address -Inner $Address -and Test-CidrContains -Outer $Address -Inner $_.address)
+  } | Select-Object -First 1
+
+  if ($existing) { return $existing }
+
+  Write-Host "Creating Network $Address for company $CompanyId"
+  New-HuduNetwork -CompanyId $CompanyId -Name $Name -Address $Address -Description $Description
+}
+
+function Ensure-HuduVlanZone {
+  param(
+    [Parameter(Mandatory)][int]$CompanyId,
+    [Parameter(Mandatory)][string]$ZoneName
+  )
+  $existing = (Get-HuduVlanZones -CompanyId $CompanyId) | Where-Object { $_.name -eq $ZoneName } | Select-Object -First 1
+  if ($existing) { return $existing }
+  Write-Host "Creating VLAN Zone '$ZoneName' for company $CompanyId"
+  New-HuduVlanZone -CompanyId $CompanyId -Name $ZoneName
+}
+
+function Ensure-HuduVlan {
+  param(
+    [Parameter(Mandatory)][int]$CompanyId,
+    [Parameter(Mandatory)][int]$VlanId,
+    [int]$ZoneId,
+    [string]$Name
+  )
+  $Name = $Name ?? "VLAN $VlanId"
+  $existing = (Get-HuduVlans -CompanyId $CompanyId) | Where-Object { $_.vlan_id -eq $VlanId } | Select-Object -First 1
+  if ($existing) {
+    # attach zone if missing (best-effort)
+    if ($ZoneId -and -not $existing.vlan_zone_id) {
+      try { Set-HuduVlan -Id $existing.id -VlanZoneId $ZoneId | Out-Null } catch {}
+    }
+    return $existing
+  }
+  Write-Host "Creating VLAN $VlanId ($Name) for company $CompanyId (zone=$ZoneId)"
+  New-HuduVlan -CompanyId $CompanyId -Name $Name -VlanId $VlanId -VlanZoneId $ZoneId
 }
