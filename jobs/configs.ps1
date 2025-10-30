@@ -20,10 +20,11 @@ warranty_expires_at="warranty expires at"
 contract="contact"
 configuration_interfaces="configuration interfaces"
 }
+$ConfigurationsHaveBeenApplied=$false
+
 if ($ITBoostData.ContainsKey("configurations")){
 
     $huduCompanies = $huduCompanies ?? $(get-huducompanies)
-    $contactsLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "contact" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "people" -Haystack $_.name)) } | Select-Object -First 1
 
     $configsLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "config" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "people" -Haystack $_.name)) } | Select-Object -First 1
     if (-not $configsLayout){
@@ -130,7 +131,7 @@ if ($ITBoostData.ContainsKey("configurations")){
 
         $newConfigRequest['Fields'] = $fields
 
-        # 4e) create or update (INSIDE the loop)
+        # 4e) create or update
         try {
         if ($newConfigRequest.Id) {
             write-host "updating with $($($newConfigRequest | convertto-json).ToString())"
@@ -144,4 +145,5 @@ if ($ITBoostData.ContainsKey("configurations")){
         }
     }
     }
+    $ConfigurationsHaveBeenApplied=$true
 }

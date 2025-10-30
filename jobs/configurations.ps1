@@ -28,7 +28,6 @@ $linkedFieldNames=@(
 "installed_by",
 "purchased_by"
 )
-$allcontacts = get-huduassets -assetlayoutId 2 -companyId 8
 $namesSeen = @()
 
 foreach ($config in $configurations) { 

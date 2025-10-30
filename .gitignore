@@ -7,3 +7,5 @@ debug
 *debug/*
 *.json
 *.env
+*environment*.ps1
+*environ*.ps1
