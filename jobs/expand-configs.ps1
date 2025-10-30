@@ -38,6 +38,7 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
 
     $ByCompanyById     = @{}
     $ByCompanyBySerial = @{}
+    Write-Host "Processing and joining data from CSV for $($ITBoostData.configurations.CSVData) rows; please be patient, this can take a long time."
 
     foreach ($row in $ITBoostData.configurations.CSVData) {
         if ([string]::IsNullOrWhiteSpace($row.organization)) { continue }
@@ -135,11 +136,24 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
             }
 
             # 4) ensure VLANs when we saw vlan_ids on any iface
+            # Gather VLANs from observations
             $seenVlans = @($obs | ForEach-Object { $_.VlanIds } | Where-Object { $_ } | Select-Object -Unique)
+
+            # Build a range string; if none found, you can:
+            #  a) skip zone creation until you actually see VLANs; or
+            #  b) create with default "1-4094".
+            $ranges = Compress-IntsToRanges -Ints $seenVlans
+            $zone   = Ensure-HuduVlanZone -CompanyId $matchedCompany.id -ZoneName 'Auto-Imported' -Ranges $ranges
+
+            # Create VLANs (attach zone only if we have one)
             foreach ($vid in $seenVlans) {
-                Write-Host "processing Seen VLANS for Zone $($zone.id)"
-                Ensure-HuduVlan -CompanyId $matchedCompany.id -VlanId $vid -ZoneId $zone.id -Name "VLAN $vid"
+            if ($zone -and $zone.id) {
+                Ensure-HuduVlan -CompanyId $matchedCompany.id -VlanId $vid -ZoneId $zone.id -Name "VLAN $vid" | Out-Null
+            } else {
+                Ensure-HuduVlan -CompanyId $matchedCompany.id -VlanId $vid -Name "VLAN $vid" | Out-Null
             }
+            }
+
 
             # (optional) 5) map IPs to networks using your existing indexers
             $index = Build-NetworkIndex -Networks $ensuredNetworks

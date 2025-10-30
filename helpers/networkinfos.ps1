@@ -318,6 +318,29 @@ function Guess-NetworksFromObservations {
   return $($cidrs | ForEach-Object { $_ })
 }
 
+function Compress-IntsToRanges {
+  param([Parameter(Mandatory)][int[]]$Ints)
+
+  $vals = $Ints | Where-Object { $_ -ge 1 -and $_ -le 4094 } | Sort-Object -Unique
+  if ($vals.Count -eq 0) { return $null }
+
+  $ranges = New-Object System.Collections.Generic.List[string]
+  $start = $vals[0]; $prev = $start
+  for ($i = 1; $i -lt $vals.Count; $i++) {
+    $cur = $vals[$i]
+    if ($cur -eq ($prev + 1)) {
+      $prev = $cur
+      continue
+    } else {
+       if ($start -eq $prev) { $ranges.Add("$start") | Out-Null} else { $ranges.Add("$start-$prev") | Out-Null } 
+      $start = $prev = $cur
+    }
+  }
+  # flush last
+  if ($start -eq $prev) { $ranges.Add("$start") | Out-Null } else { $ranges.Add("$start-$prev") | Out-Null } 
+  # join as comma list
+  ($ranges -join ',')
+}
 
 function Ensure-HuduNetwork {
   param(
@@ -341,12 +364,25 @@ function Ensure-HuduNetwork {
 function Ensure-HuduVlanZone {
   param(
     [Parameter(Mandatory)][int]$CompanyId,
-    [Parameter(Mandatory)][string]$ZoneName
+    [Parameter(Mandatory)][string]$ZoneName,
+    [string]$Ranges  # e.g. "10-12,20,30-31"
   )
-  $existing = (Get-HuduVlanZones -CompanyId $CompanyId) | Where-Object { $_.name -eq $ZoneName } | Select-Object -First 1
-  if ($existing) { return $existing }
-  Write-Host "Creating VLAN Zone '$ZoneName' for company $CompanyId"
-  New-HuduVlanZone -CompanyId $CompanyId -Name $ZoneName
+
+  $existing = (Get-HuduVlanZones -CompanyId $CompanyId) |
+              Where-Object { $_.name -eq $ZoneName } | Select-Object -First 1
+  if ($existing) {
+    # Optionally backfill ranges if missing and we have some
+    if ($Ranges -and -not $existing.vlan_id_ranges) {
+      try { Set-HuduVlanZone -Id $existing.id -VlanIdRanges $Ranges | Out-Null } catch {}
+    }
+    return $existing
+  }
+
+  # API requires non-empty ranges; if none provided, use a broad default.
+  $rangesToUse = if ($Ranges -and $Ranges.Trim()) { $Ranges.Trim() } else { '1-4094' }
+
+  Write-Host "Creating VLAN Zone '$ZoneName' (ranges $rangesToUse) for company $CompanyId"
+  New-HuduVLANZone -Name $ZoneName -CompanyId $CompanyId -VLANIdRanges $rangesToUse
 }
 
 function Ensure-HuduVlan {
