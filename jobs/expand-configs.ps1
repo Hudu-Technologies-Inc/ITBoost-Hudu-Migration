@@ -1,4 +1,67 @@
-    $configsLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "config" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "people" -Haystack $_.name)) } | Select-Object -First 1; $configsLayout = $configsLayout.asset_layout ?? $configsLayout
+$configsMap = @{
+model="model"
+  modelo                   = "model"
+configuration_type="configuration type"
+resource_type="resource type"
+configuration_status="configuration status"
+hostname="hostname"
+ptimary_ip="primary ip"
+default_gateway="default gateway"
+mac_address="macAddress"
+serial_number="serial number"
+asset_tag="asset tag"
+manufacturer="manufacturer"
+operating_system="operating system"
+operating_system_notes="operating system notes"
+position="position"
+notes="notes"
+installed_at="installed at"
+purchased_at="purchased at"
+warranty_expires_at="warranty expires at"
+contact="contact"
+configuration_interfaces="configuration interfaces"
+}
+
+function Build-RowMergedMap {
+  <#
+    From a set of raw CSV rows and your configsMap, pick the first meaningful value
+    seen for each mapped label. Returns @{ <Label> = <Value> }.
+  #>
+  param(
+    [Parameter(Mandatory)][hashtable]$ConfigsMap,
+    [Parameter(Mandatory)][object[]]$Rows
+  )
+
+  $result = @{}
+  foreach ($csvKey in $ConfigsMap.Keys) {
+    $label = [string]$ConfigsMap[$csvKey]
+    if ([string]::IsNullOrWhiteSpace($label)) { continue }
+
+    $picked = $null
+    foreach ($r in $Rows) {
+      # handle both exact and “variant” key spellings (e.g., mac_address vs macAddress)
+      $candidate = $r.$csvKey
+      if ($null -eq $candidate) {
+        # try a loose fallback: search by case-insensitive property name
+        $prop = ($r.PSObject.Properties | Where-Object { Test-NameEquivalent -A $_.Name -B $csvKey }).Value
+        $candidate = $prop
+      }
+
+      if ($null -ne (Get-FirstPresent $candidate)) { $picked = $candidate; break }
+    }
+
+    if ($null -ne $picked) {
+      # string trim
+      if ($picked -is [string]) { $picked = $picked.Trim() }
+      $result[$label] = $picked
+    }
+  }
+
+  return $result
+}
+
+
+$configsLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "config" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "people" -Haystack $_.name)) } | Select-Object -First 1; $configsLayout = $configsLayout.asset_layout ?? $configsLayout
 $ConfigExpansionMethod = $ConfigExpansionMethod ?? $(Select-ObjectFromList -message "Which Expansion Method for Config Data?" -objects @("IPAM-Only","RichText-Field","ALL"))
 $ConfigurationsHaveBeenApplied = $true
 $ConfigsRichTextOverviewField = "Additional Information"
@@ -104,15 +167,15 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
                 $ConfigCollection += $configCollectionEntry
             }
 
-
+            $EnsuredIPAddresses=@()
+            $EnsuredNetworks=@()
             if (@("ALL","IPAM-Only") -contains $ConfigExpansionMethod){
             # 1) harvest observations for this company
             $obs = Collect-CompanyIpObservations -ConfigCollection $ConfigCollection
 
             if (-not $obs -or $obs.Count -eq 0) {
                 Write-Host "No IP observations for company '$($matchedCompany.name)'; skipping IPAM."
-                continue
-            }
+            } else {
 
             # 2) propose CIDRs
             $cidrs = Guess-NetworksFromObservations -Observations $obs
@@ -125,16 +188,13 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
 
             #### LONE PUBLIC HOST
             if (($cidrs.Count -eq 0) -and ($obs.Count -gt 0)) {
-            $publicSingles = $obs | Where-Object { -not (Test-Rfc1918 -Ip $_.IP) } |
-                                        Select-Object -ExpandProperty IP -Unique
-            foreach ($p in $publicSingles) {
-                $net = Ensure-HuduNetwork -CompanyId $matchedCompany.id -Address $p -Description 'Auto-imported (public host)'
-                if ($net) { $ensuredNetworks.Add($net) | Out-Null }
+                $publicSingles = $obs | Where-Object { -not (Test-Rfc1918 -Ip $_.IP) } |
+                                            Select-Object -ExpandProperty IP -Unique
+                foreach ($p in $publicSingles) {
+                    $net = Ensure-HuduNetwork -CompanyId $matchedCompany.id -Address $p -Description 'Auto-imported (public host)'
+                    if ($net) { $ensuredNetworks.Add($net) | Out-Null }
+                }
             }
-            }
-
-            Write-Host "Ensuring Zone for $($matchedCompany.name)"
-            $zone = Ensure-HuduVlanZone -CompanyId $matchedCompany.id -ZoneName 'Auto-Imported'
 
             # 3) ensure networks exist
             $ensuredNetworks = New-Object System.Collections.Generic.List[object]
@@ -144,56 +204,12 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
                 if ($net) { $ensuredNetworks.Add($net) | Out-Null }
             }
 
-            # Gather VLANs from observations
-            $seenVlans = @($obs | ForEach-Object { $_.VlanIds } | Where-Object { $_ } | Select-Object -Unique)
-
-            # Decide ranges for the zone
-            $ranges = if ($seenVlans.Count -gt 0) {
-            Compress-IntsToRanges -Ints $seenVlans
-            } else {
-            # no VLAN hints → create a zone with a broad default
-            '1-4094'
-            }
-
-            $zone = Ensure-HuduVlanZone -CompanyId $matchedCompany.id -ZoneName 'Auto-Imported' -Ranges $ranges
-
-            # Create VLANs only if we actually saw any
-            if ($seenVlans.Count -gt 0) {
-            foreach ($vid in $seenVlans) {
-                if ($zone -and $zone.id) {
-                Ensure-HuduVlan -CompanyId $matchedCompany.id -VlanId $vid -ZoneId $zone.id -Name "VLAN $vid" | Out-Null
-                } else {
-                Ensure-HuduVlan -CompanyId $matchedCompany.id -VlanId $vid -Name "VLAN $vid" | Out-Null
-                }
-            }
-            }
-
-            # Ensure networks only if any were inferred/created
-            $ensuredNetworks = New-Object System.Collections.Generic.List[object]
-            foreach ($cidr in $cidrs) {
-            $net = Ensure-HuduNetwork -CompanyId $matchedCompany.id -Address $cidr -Name $cidr -Description 'Auto-imported from configurations'
-            if ($net) { $ensuredNetworks.Add($net) | Out-Null }
-            }
-
-
-            
             # Build index only if we have networks
             $index = @()
             if ($ensuredNetworks.Count -gt 0) {
-            $index = Build-NetworkIndex -Networks $ensuredNetworks
+                $index = Build-NetworkIndex -Networks $ensuredNetworks
             }
 
-            # Only attempt lookup if we have an index and the function is in scope
-            if ($index.Count -gt 0 -and (Get-Command Find-NetworkForIp -ErrorAction SilentlyContinue)) {
-            foreach ($o in $obs) {
-                if ($o.Gateways -contains $o.IP) {
-                $n = Find-NetworkForIp -Ip $o.IP -NetworkIndex $index -CompanyId $matchedCompany.id
-                if ($n) {
-                    Write-Host "processing gateways for IP $($o.IP) in network $($n.address)"
-                    # (optional: annotate/default-gw handling here)
-                }
-                }
-            }
             }
             $index = if ($ensuredNetworks.Count -gt 0) { Build-NetworkIndex -Networks $ensuredNetworks } else { @() }
 
@@ -207,22 +223,20 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
                 $status = 'active'   # or infer from your source
                 Ensure-HuduIPAddress -Address $ip -CompanyId $matchedCompany.id -NetworkId $net.id -Status $status | Out-Null
             }
-            }            
+            }}
 
             if (@("ALL","RichText-Field") -contains $ConfigExpansionMethod){
-                # build html table from observations --- this is the easy part, use $obs-ervations or network$index
-
-
-
-
+                $fieldsRequest=@()
+                foreach ($f in $configsLayout.fields | where-object {$_.label -ne $ConfigsRichTextOverviewField}){
+                    $value = $($matchedconfig.fields | where-object {Test-NameEquivalent -A $_.label -B $f.label} | Select-Object -First 1)?.value ?? $null
+                    $value = $value ?? $(Build-RowMergedMap -ConfigsMap $configsMap -Rows $rows -OnlyLabels $layoutLabels)["$($f.label)"]
+                    $fieldsRequest+=@{$f.label = $value}
+                }
+                
+                $richTextOverview = Convert-MapToHtmlTable -Title "$ConfigsRichTextOverviewField for $($matchedConfig.name)" -Map @{Network = $obs; Interfaces = $($(Build-RowMergedMap -ConfigsMap $configsMap -Rows $rows -OnlyLabels $layoutLabels)["configuration interfaces"])}
+                $fieldsRequest+=@{$ConfigsRichTextOverviewField = $richTextOverview}
+                Set-HuduASset -id $matchedAsset.id -fields $fieldsRequest
             }
-
-
-
-
-        
-
-
         }
     }
-}}
+}

@@ -373,9 +373,9 @@ function Ensure-HuduIPAddress {
               Where-Object { $_.address -eq $Address } | Select-Object -First 1
   if ($existing) { return $existing }
 
-  New-HuduIPAddress -Address $Address -CompanyID $CompanyId -NetworkId $NetworkId `
+  return $(New-HuduIPAddress -Address $Address -CompanyID $CompanyId -NetworkId $NetworkId `
                     -Status $Status -FQDN $FQDN -Description $Description -Notes $Notes `
-                    -AssetID $AssetId -SkipDNSValidation:$SkipDNSValidation
+                    -AssetID $AssetId -SkipDNSValidation:$SkipDNSValidation)
 }
 function Ensure-HuduNetwork {
   param(

@@ -7,6 +7,58 @@ function As-HtmlString {
   }
   return [string]$Value
 }
+
+function Convert-MapToHtmlTable {
+  param(
+    [AllowNull()][object]$Map,
+    [string]$Title,
+    [string[]]$RawHtmlValueKeys = @()   # keys that should NOT be HTML-encoded
+  )
+
+  # normalize to hashtable
+  if (-not ($Map -is [System.Collections.IDictionary])) {
+    $ht=@{}; if ($Map) { foreach($p in $Map.PSObject.Properties){ $ht[$p.Name]=$p.Value } }
+    $Map = $ht
+  }
+
+  $enc = [System.Net.WebUtility]::HtmlEncode
+  if (-not $Map -or $Map.Keys.Count -eq 0) {
+    return "<section class='card'><h2>$($enc.Invoke($Title))</h2><p>No data available</p></section>"
+  }
+
+  # very light safety check: allow only http/https <a> tags when "raw"
+  $isSafeAnchor = {
+    param($s)
+    if (-not $s) { return $false }
+    $m = [regex]::Match([string]$s, '^\s*<a\s+[^>]*href=["'']https?://[^"'']+["''][^>]*>.*</a>\s*$', 'IgnoreCase')
+    return $m.Success
+  }
+
+  $rows = $Map.GetEnumerator() | Sort-Object Key | ForEach-Object {
+    $k = [string]$_.Key
+    $v = [string]$_.Value
+
+    $valHtml = if ($RawHtmlValueKeys -contains $k -and (& $isSafeAnchor $v)) {
+      $v  # use as-is (clickable)
+    } else {
+      $enc.Invoke($v)  # encode (not clickable)
+    }
+
+    "<tr><td>$($enc.Invoke($k))</td><td>$valHtml</td></tr>"
+  }
+
+@"
+<section class='card'>
+  <h2>$($enc.Invoke($Title))</h2>
+  <table>
+    <thead><tr><th>Key</th><th>Value</th></tr></thead>
+    <tbody>
+      $(($rows -join "`n"))
+    </tbody>
+  </table>
+</section>
+"@
+}
 function Normalize-KeyForLookup {
   param(
     [Parameter(Mandatory)][string]$Raw,
