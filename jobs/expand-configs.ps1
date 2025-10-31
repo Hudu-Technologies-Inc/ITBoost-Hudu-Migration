@@ -87,7 +87,7 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
                 foreach ($f in $configsLayout.fields){
                     $UpdateFields+=$f
                 }
-                $UpdateFields+=@{label=$ConfigsRichTextOverviewField; field_type = "RichText"; show_in_list = $true; expiration=$false; required=$false; position=259;}
+                $UpdateFields+=@{label=$ConfigsRichTextOverviewField; field_type = "RichText"; show_in_list = $true; position=259;}
                 Set-HuduAssetLayout -id $configsLayout.id -fields $UpdateFields
                 $configsLayout = Get-HuduAssetLayouts -id $configsLayout.id; $configsLayout = $configsLayout.asset_layout ?? $configsLayout
             }
