@@ -203,8 +203,6 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
                 $net = Ensure-HuduNetwork -CompanyId $matchedCompany.id -Address $cidr -Name $cidr -Description 'Auto-imported from configurations'
                 if ($net) { $ensuredNetworks.Add($net) | Out-Null }
             }
-
-            # Build index only if we have networks
             $index = @()
             if ($ensuredNetworks.Count -gt 0) {
                 $index = Build-NetworkIndex -Networks $ensuredNetworks
@@ -214,13 +212,12 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
             $index = if ($ensuredNetworks.Count -gt 0) { Build-NetworkIndex -Networks $ensuredNetworks } else { @() }
 
             if ($index.Count -gt 0) {
-            # dedupe just the IPs you want to persist
             $targetIps = $obs | ForEach-Object { $_.IP } | Where-Object { $_ } | Sort-Object -Unique
             foreach ($ip in $targetIps) {
                 $net = Find-NetworkForIp -Ip $ip -NetworkIndex $index -CompanyId $matchedCompany.id
                 if ($null -eq $net) { continue }
 
-                $status = 'active'   # or infer from your source
+                $status = 'active'   
                 Ensure-HuduIPAddress -Address $ip -CompanyId $matchedCompany.id -NetworkId $net.id -Status $status | Out-Null
             }
             }}
@@ -229,13 +226,15 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
                 $fieldsRequest=@()
                 foreach ($f in $configsLayout.fields | where-object {$_.label -ne $ConfigsRichTextOverviewField}){
                     $value = $($matchedconfig.fields | where-object {Test-NameEquivalent -A $_.label -B $f.label} | Select-Object -First 1)?.value ?? $null
-                    $value = $value ?? $(Build-RowMergedMap -ConfigsMap $configsMap -Rows $rows -OnlyLabels $layoutLabels)["$($f.label)"]
+                    $value = $value ?? $(Build-RowMergedMap -ConfigsMap $configsMap -Rows $rows)["$($f.label)"]
                     $fieldsRequest+=@{$f.label = $value}
                 }
-                
-                $richTextOverview = Convert-MapToHtmlTable -Title "$ConfigsRichTextOverviewField for $($matchedConfig.name)" -Map @{Network = $obs; Interfaces = $($(Build-RowMergedMap -ConfigsMap $configsMap -Rows $rows -OnlyLabels $layoutLabels)["configuration interfaces"])}
+                $interfaces = $(Build-RowMergedMap -ConfigsMap $configsMap -Rows $rows )["configuration interfaces"]
+                if ($obs -and $obs.count -gt 0 -and $null -ne $interfaces){
+                $richTextOverview = Convert-MapToHtmlTable -Title "$ConfigsRichTextOverviewField for $($matchedConfig.name)" -Map @{Network = $obs; Interfaces = $interfaces;}
                 $fieldsRequest+=@{$ConfigsRichTextOverviewField = $richTextOverview}
-                Set-HuduASset -id $matchedAsset.id -fields $fieldsRequest
+                }
+                Set-HuduASset -id $matchedconfig.id -fields $fieldsRequest
             }
         }
     }
