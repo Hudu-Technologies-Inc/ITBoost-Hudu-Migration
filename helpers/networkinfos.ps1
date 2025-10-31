@@ -350,6 +350,67 @@ function Test-Rfc1918 {
   }
 }
 
+function Build-NetworkIndex {
+  param([Parameter(Mandatory)][object[]]$Networks)
+  $rows = @()
+  foreach ($n in @($Networks)) {
+    $cidrObj = if ($n.address) { Parse-Cidr $n.address } else { $null }
+    if ($cidrObj) {
+      $rows += [pscustomobject]@{ Network = $n; Cidr = $cidrObj }
+    } else {
+      # Log once but do not throw
+      Write-Host "Skip bad network address: $($n.address)" -ForegroundColor Yellow
+    }
+  }
+  # Always return an array (possibly empty), never $null
+  @($rows | Sort-Object { $_.Cidr.Prefix } -Descending)
+}
+
+function Find-NetworkForIp {
+  param(
+    [Parameter(Mandatory)][string]$Ip,
+    [Parameter(Mandatory)][object[]]$NetworkIndex,
+    [int]$CompanyId = $null
+  )
+  if (-not $NetworkIndex) { return $null }   # guard
+  $ipU = Convert-IPv4ToUInt32 $Ip
+  if ($null -eq $ipU) { return $null }
+
+  foreach ($row in $NetworkIndex) {
+    $n = $row.Network
+    if ($CompanyId -and $n.company_id -ne $CompanyId) { continue }
+    $c = $row.Cidr
+    if ($ipU -ge $c.Start -and $ipU -le $c.End) { return $n }
+  }
+  $null
+}
+function Group-IpAddressesByNetwork {
+  param(
+    [Parameter(Mandatory)][object[]]$IpAddresses,
+    [Parameter(Mandatory)][object[]]$Networks,
+    [int]$CompanyId = $null
+  )
+
+  $idx = Build-NetworkIndex -Networks $Networks
+  if ($null -eq $idx) { $idx = @() }  # harden
+
+  $groups = @{}
+  foreach ($ip in @($IpAddresses)) {
+    if (-not $ip.address) { continue }
+    if ($CompanyId -and $ip.company_id -ne $CompanyId) { continue }
+
+    $net = Find-NetworkForIp -Ip $ip.address -NetworkIndex $idx -CompanyId $CompanyId
+    $key = if ($net) { "net:$($net.id)" } else { "unmatched" }
+
+    if (-not $groups.ContainsKey($key)) {
+      $groups[$key] = [pscustomobject]@{ Network = $net; IPs = New-Object System.Collections.Generic.List[object] }
+    }
+    $groups[$key].IPs.Add($ip) | Out-Null
+  }
+
+  $groups.Values
+}
+
 function Ensure-Cidr {
   param([Parameter(Mandatory)][string]$AddressOrHost, [int]$DefaultPrefix = 32)
   if ($AddressOrHost -match '/\d{1,2}$') { return $AddressOrHost }
@@ -369,12 +430,11 @@ function Ensure-HuduIPAddress {
   )
 
   # Try to find existing IP by company+network+address (adjust if your API exposes a direct GET)
-  $existing = (Get-HuduIPAddresses -CompanyId $CompanyId -NetworkId $NetworkId) |
-              Where-Object { $_.address -eq $Address } | Select-Object -First 1
+  $existing = (Get-HuduIPAddresses -CompanyId $CompanyId) |  Where-Object { $_.address -eq $Address } | Select-Object -First 1
   if ($existing) { return $existing }
 
   return $(New-HuduIPAddress -Address $Address -CompanyID $CompanyId -NetworkId $NetworkId `
-                    -Status $Status -FQDN $FQDN -Description $Description -Notes $Notes `
+                    -FQDN $FQDN -Description $Description -Notes $Notes `
                     -AssetID $AssetId -SkipDNSValidation:$SkipDNSValidation)
 }
 function Ensure-HuduNetwork {
@@ -413,8 +473,8 @@ function Ensure-HuduNetwork {
   if ($existing) { return $existing }
 
   Write-Host "Creating Network $Address (type=$([string]($NetworkType ?? 0))) for company $CompanyId"
-  New-HuduNetwork -CompanyId $CompanyId -Name $Name -Address $Address `
-                  -Description $Description -NetworkType $NetworkType
+  New-HuduNetwork -CompanyId $CompanyId -Address $Address -name $(if ($([string]::IsNullOrEmpty($name))){$Address} else {$name}) `
+                  -Description $Description -NetworkType $($NetworkType ?? 0)
 }
 
 function Ensure-HuduVlanZone {

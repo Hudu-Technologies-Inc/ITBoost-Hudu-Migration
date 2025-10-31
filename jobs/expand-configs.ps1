@@ -166,9 +166,9 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
                 }
                 $ConfigCollection += $configCollectionEntry
             }
+            $ensuredNetworks = New-Object System.Collections.Generic.List[object]
+            $EnsuredIPAddresses = New-Object System.Collections.Generic.List[object]
 
-            $EnsuredIPAddresses=@()
-            $EnsuredNetworks=@()
             if (@("ALL","IPAM-Only") -contains $ConfigExpansionMethod){
             # 1) harvest observations for this company
             $obs = Collect-CompanyIpObservations -ConfigCollection $ConfigCollection
@@ -196,8 +196,6 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
                 }
             }
 
-            # 3) ensure networks exist
-            $ensuredNetworks = New-Object System.Collections.Generic.List[object]
             foreach ($cidr in $cidrs) {
                 Write-Host "Processing Networks for cidr $($cidr)"
                 $net = Ensure-HuduNetwork -CompanyId $matchedCompany.id -Address $cidr -Name $cidr -Description 'Auto-imported from configurations'
@@ -218,7 +216,8 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
                 if ($null -eq $net) { continue }
 
                 $status = 'active'   
-                Ensure-HuduIPAddress -Address $ip -CompanyId $matchedCompany.id -NetworkId $net.id -Status $status | Out-Null
+                $ipObj = Ensure-HuduIPAddress -Address $ip -CompanyId $matchedCompany.id -AssetId $matchedconfig.id -NetworkId $net.id -Status $status
+                if ($ipObj) { $EnsuredIPAddresses.Add($ipObj) | Out-Null }
             }
             }}
 
@@ -227,13 +226,39 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
                 foreach ($f in $configsLayout.fields | where-object {$_.label -ne $ConfigsRichTextOverviewField}){
                     $value = $($matchedconfig.fields | where-object {Test-NameEquivalent -A $_.label -B $f.label} | Select-Object -First 1)?.value ?? $null
                     $value = $value ?? $(Build-RowMergedMap -ConfigsMap $configsMap -Rows $rows)["$($f.label)"]
-                    $fieldsRequest+=@{$f.label = $value}
+                    if ($null -ne $value){
+                    
+                        $fieldsRequest+=@{$f.label = $value}
+                    }
                 }
-                $interfaces = $(Build-RowMergedMap -ConfigsMap $configsMap -Rows $rows )["configuration interfaces"]
-                if ($obs -and $obs.count -gt 0 -and $null -ne $interfaces){
-                $richTextOverview = Convert-MapToHtmlTable -Title "$ConfigsRichTextOverviewField for $($matchedConfig.name)" -Map @{Network = $obs; Interfaces = $interfaces;}
-                $fieldsRequest+=@{$ConfigsRichTextOverviewField = $richTextOverview}
+
+
+                if ($obs) {
+                # Build the “interfaces” mini-table from your collection
+                $obsHtml = Convert-ObjectsToHtmlTable -Items $obs -Title 'Observed IPs'
+
+                $summaryMap = @{
+                Observed                 = $obsHtml
+                gateways                 = $ConfigCollection["default_gateway"]
+                configuration_interfaces = $ConfigCollection["configuration_interfaces"]
+                interfaces               = $ConfigCollection["primary_ip"]
                 }
+
+                if ($ensuredNetworks -and $ensuredNetworks.Count -ge 1) {
+                $netHtml = Convert-ObjectsToHtmlTable -Items $ensuredNetworks -Title 'Networks' -Columns @('name','company_id','url')
+                $summaryMap["Networks"] = $netHtml
+                }
+                if ($EnsuredIPAddresses -and $EnsuredIPAddresses.Count -ge 1) {
+                $ipHtml = Convert-ObjectsToHtmlTable -Items $EnsuredIPAddresses -Title 'IP Addresses' -Columns @('address','status','url')
+                $summaryMap["Addresses"] = $ipHtml
+                }
+
+                $richTextOverview = Convert-MapToHtmlTable -Title "$ConfigsRichTextOverviewField for $($matchedConfig.name)" -Map $summaryMap  -RawHtmlValueKeys @('Observed','Networks','Addresses') 
+
+                $fieldsRequest += @{ $ConfigsRichTextOverviewField = $richTextOverview }
+                }
+
+                
                 Set-HuduASset -id $matchedconfig.id -fields $fieldsRequest
             }
         }
