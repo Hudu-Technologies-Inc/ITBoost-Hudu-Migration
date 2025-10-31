@@ -8,7 +8,50 @@ primary_email = "Email"
 notes = "Notes"
 title = "Title"
 }
+function Build-HuduContactIndex {
+  [CmdletBinding()]
+  param([Parameter(Mandatory)][object[]]$Contacts)
 
+  $idx = @{
+    ByName  = @{}
+    ByEmail = @{}
+    ByPhone = @{}
+  }
+
+  foreach($c in $Contacts){
+    $cid = $c.company_id
+
+    # Name index from First+Last if present, else asset.name
+    $fn = Get-HuduFieldValue -Asset $c -Labels $FIRSTNAME_LABELS
+    $ln = Get-HuduFieldValue -Asset $c -Labels $LASTNAME_LABELS
+    $nameKey = if ($fn -or $ln) { Normalize-Name "$fn $ln" } else { Normalize-Name $c.name }
+    if ($nameKey) {
+      $k = "$cid|$nameKey"
+      if (-not $idx.ByName.ContainsKey($k)) { $idx.ByName[$k] = @() }
+      $idx.ByName[$k] += $c
+    }
+
+    # Email index
+    $em = Get-HuduFieldValue -Asset $c -Labels $EMAIL_LABELS
+    $emKey = Normalize-Email $em
+    if ($emKey) {
+      $k = "$cid|$emKey"
+      if (-not $idx.ByEmail.ContainsKey($k)) { $idx.ByEmail[$k] = @() }
+      $idx.ByEmail[$k] += $c
+    }
+
+    # Phone index
+    $ph = Get-HuduFieldValue -Asset $c -Labels $PHONE_LABELS
+    $phKey = Normalize-Phone $ph
+    if ($phKey) {
+      $k = "$cid|$phKey"
+      if (-not $idx.ByPhone.ContainsKey($k)) { $idx.ByPhone[$k] = @() }
+      $idx.ByPhone[$k] += $c
+    }
+  }
+
+  return $idx
+}
 
 if ($ITBoostData.ContainsKey("contacts")){
     $contactsLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "contact" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "people" -Haystack $_.name)) } | Select-Object -First 1

@@ -1,10 +1,6 @@
 $CSVFiles= Get-ChildItem -Path $ITBoostExportPath -Recurse -File -Filter "*.csv"
 foreach ($f in $CSVFiles){
     try {
-        if $f.BaseName -ilike "*config*"{
-            $idx = [Array]::IndexOf($headers, 'model')
-            if ($idx -ge 0) { $headers[$idx] = 'modelo' }
-        }
         $csvData=$(Import-Csv $f.FullName | Select-Object @{Name='CsvRow'; Expression={ $i++ }}, *)
     } catch {continue}
     if ($csvData){

@@ -20,12 +20,13 @@ warranty_expires_at="warranty expires at"
 contract="contact"
 configuration_interfaces="configuration interfaces"
 }
+$ConfigurationsHaveBeenApplied=$false
+
 if ($ITBoostData.ContainsKey("configurations")){
 
     $huduCompanies = $huduCompanies ?? $(get-huducompanies)
-    $contactsLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "contact" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "people" -Haystack $_.name)) } | Select-Object -First 1
 
-    $configsLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "config" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "people" -Haystack $_.name)) } | Select-Object -First 1
+    $configsLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "config" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "people" -Haystack $_.name)) } | Select-Object -First 1; $configsLayout = $configsLayout.asset_layout ?? $configsLayout
     if (-not $configsLayout){
         $configsLayout=$(New-HuduAssetLayout -name "configs" -Fields @(
                     @{label = "model"; field_type = "Text"; show_in_list = $false; position=24},
@@ -52,25 +53,26 @@ if ($ITBoostData.ContainsKey("configurations")){
                     @{label = "location"; field_type = "Text"; show_in_list = $false; position=13},
                     @{label = "configuration interfaces"; field_type = "Text"; show_in_list = $false; position=14}
         ) -Icon "fas fa-users" -IconColor "#ffffff" -Color "#6136ff" -IncludePasswords $true -IncludePhotos $true -IncludeComments $true -IncludeFiles $true).asset_layout
-        $configsLayout = Get-HuduAssetLayouts -id $configsLayout.id
+        $configsLayout = Get-HuduAssetLayouts -id $configsLayout.id; $configsLayout = $configsLayout.asset_layout ?? $configsLayout
     }
     $configsFields = $configsLayout.fields
     $uniqueCompanies = $ITBoostData.configurations.CSVData |
         Where-Object { -not [string]::IsNullOrWhiteSpace($_.organization) } | Select-Object -ExpandProperty organization -Unique
     write-host "Uniq companies $($uniqueCompanies.count)"
     foreach ($company in $uniqueCompanies) {
-    Write-Host "starting $company"
-    $configsForCompany = $ITBoostData.configurations.CSVData | Where-Object { $_.organization -eq $company }
-    write-host "$($configsForCompany.count) configs for company"
-        $matchedCompany = $huduCompanies | where-object {
-            ($_.name -eq $company) -or
-            [bool]$(Test-NameEquivalent -A $_.name -B "*$($company)*") -or
-            [bool]$(Test-NameEquivalent -A $_.nickname -B "*$($company)*")} | Select-Object -First 1
-        $matchedCompany = $huduCompanies | Where-Object {
-            $_.name -eq $company -or
-            (Test-NameEquivalent -A $_.name -B "*$company*") -or
-            (Test-NameEquivalent -A $_.nickname -B "*$company*")
-            } | Select-Object -First 1
+        $matchedCompany = $null
+        Write-Host "starting $company"
+        $configsForCompany = $ITBoostData.configurations.CSVData | Where-Object { $_.organization -eq $company }
+        write-host "$($configsForCompany.count) configs for company"
+            $matchedCompany = $huduCompanies | where-object {
+                ($_.name -eq $company) -or
+                [bool]$(Test-NameEquivalent -A $_.name -B "*$($company)*") -or
+                [bool]$(Test-NameEquivalent -A $_.nickname -B "*$($company)*")} | Select-Object -First 1
+            $matchedCompany =$matchedCompany ?? $huduCompanies | Where-Object {
+                $_.name -eq $company -or
+                (Test-NameEquivalent -A $_.name -B "*$company*") -or
+                (Test-NameEquivalent -A $_.nickname -B "*$company*")
+                } | Select-Object -First 1
 
             $matchedCompany = $matchedCompany ?? (Get-HuduCompanies -Name $company | Select-Object -First 1)
 
@@ -130,7 +132,7 @@ if ($ITBoostData.ContainsKey("configurations")){
 
         $newConfigRequest['Fields'] = $fields
 
-        # 4e) create or update (INSIDE the loop)
+        # 4e) create or update
         try {
         if ($newConfigRequest.Id) {
             write-host "updating with $($($newConfigRequest | convertto-json).ToString())"
@@ -144,4 +146,5 @@ if ($ITBoostData.ContainsKey("configurations")){
         }
     }
     }
+    $ConfigurationsHaveBeenApplied=$true
 }

@@ -1,3 +1,28 @@
+function Get-FirstPresent {
+  param([Parameter(ValueFromRemainingArguments=$true)]$Values)
+  foreach ($v in $Values) {
+    if ($null -eq $v) { continue }
+    if ($v -is [string]) { if ($v.Trim().Length -gt 0) { return $v } else { continue } }
+    if ($v -is [System.Collections.IEnumerable] -and -not ($v -is [string])) {
+      $arr = @($v); if ($arr.Count -gt 0) { return $v } else { continue }
+    }
+    return $v
+  }
+  return $null
+}
+
+function Get-FieldValueByLabel {
+  param(
+    [Parameter(Mandatory)] $FieldArray, # e.g. $matchedConfig.fields or $row.fields
+    [Parameter(Mandatory)][string] $Label
+  )
+  if (-not $FieldArray) { return $null }
+  # Find exact or “equivalent” label
+  $hit = $FieldArray | Where-Object { $_.label -eq $Label } | Select-Object -First 1
+  $hit = $hit ?? ($FieldArray | Where-Object { Test-Equiv -A $_.label -B $Label } | Select-Object -First 1)
+  $hit?.value
+}
+
 function Write-InspectObject {
     param (
         [object]$object,

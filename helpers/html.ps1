@@ -7,6 +7,130 @@ function As-HtmlString {
   }
   return [string]$Value
 }
+function Convert-KeyValuesToHtml {
+  param(
+    [Parameter(Mandatory)][hashtable]$Map,
+    [string]$Title = $null
+  )
+  $enc = { param($s) [System.Net.WebUtility]::HtmlEncode([string]$s) }
+
+  $rows = foreach ($k in ($Map.Keys | Sort-Object)) {
+    $v = $Map[$k]
+    if ($v -is [System.Collections.IEnumerable] -and -not ($v -is [string])) {
+      $v = (@($v) | Where-Object { $_ } | ForEach-Object { [string]$_ } ) -join ', '
+    }
+    "<tr><td>$(& $enc $k)</td><td>$(& $enc $v)</td></tr>"
+  }
+
+@"
+<section class='card'>
+  $(if ($Title) { "<h3>$(& $enc $Title)</h3>" })
+  <table>
+    <thead><tr><th>Key</th><th>Value</th></tr></thead>
+    <tbody>
+      $(($rows -join "`n"))
+    </tbody>
+  </table>
+</section>
+"@
+}
+function Convert-ObjectsToHtmlTable {
+  param(
+    [Parameter(Mandatory)][object[]]$Items,
+    [string[]]$Columns,
+    [string]$Title = $null
+  )
+
+  if (-not $Items -or $Items.Count -eq 0) {
+    return "<section class='card'><h3>$([System.Net.WebUtility]::HtmlEncode($Title))</h3><p>No rows</p></section>"
+  }
+
+  if (-not $Columns -or $Columns.Count -eq 0) {
+    $Columns = @($Items[0].PSObject.Properties.Name)
+  }
+
+  $enc = { param($s) [System.Net.WebUtility]::HtmlEncode([string]$s) }
+
+  $thead = "<tr>" + ($Columns | ForEach-Object { "<th>$(& $enc $_)</th>" }) -join '' + "</tr>"
+  $tbodyRows = foreach ($it in $Items) {
+    $cells = foreach ($c in $Columns) {
+      $val = $it.$c
+      if ($null -eq $val) { $val = '' }
+
+      # 🔗 hyperlink detection
+      elseif ($c -eq 'url' -and $val -match '^https?://') {
+        $name = if ($it.name) { $it.name } elseif ($it.address) { $it.address } else { $val }
+        $val  = "<a href='$($val)' target='_blank'>$(& $enc $name)</a>"
+      }
+      elseif ($val -is [System.Collections.IEnumerable] -and -not ($val -is [string])) {
+        $val = (@($val) -join ', ')
+      }
+      else {
+        $val = & $enc $val
+      }
+
+      "<td>$val</td>"
+    }
+    "<tr>$($cells -join '')</tr>"
+  }
+
+@"
+<section class='card'>
+  $(if ($Title) { "<h3>$(& $enc $Title)</h3>" })
+  <table>
+    <thead>$thead</thead>
+    <tbody>
+      $(($tbodyRows -join "`n"))
+    </tbody>
+  </table>
+</section>
+"@
+}
+function Convert-MapToHtmlTable {
+  param(
+    [AllowNull()][object]$Map,
+    [string]$Title,
+    [string[]]$RawHtmlValueKeys = @()   # keys to render as-is (no encoding)
+  )
+
+  # normalize to hashtable
+  if (-not ($Map -is [System.Collections.IDictionary])) {
+    $ht=@{}; if ($Map) { foreach($p in $Map.PSObject.Properties){ $ht[$p.Name]=$p.Value } }
+    $Map = $ht
+  }
+
+  $enc = { param($s) [System.Net.WebUtility]::HtmlEncode([string]$s) }
+
+  if (-not $Map -or $Map.Keys.Count -eq 0) {
+    return "<section class='card'><h2>$(& $enc $Title)</h2><p>No data available</p></section>"
+  }
+
+  $rows = $Map.GetEnumerator() | Sort-Object Key | ForEach-Object {
+    $k = [string]$_.Key
+    $v = [string]$_.Value
+
+    $valHtml = if ($RawHtmlValueKeys -contains $k) {
+      $v                    # render raw (you vouch for it)
+    } else {
+      & $enc $v             # encode
+    }
+
+    "<tr><td>$(& $enc $k)</td><td>$valHtml</td></tr>"
+  }
+
+@"
+<section class='card'>
+  <h2>$(& $enc $Title)</h2>
+  <table>
+    <thead><tr><th>Key</th><th>Value</th></tr></thead>
+    <tbody>
+      $(($rows -join "`n"))
+    </tbody>
+  </table>
+</section>
+"@
+}
+
 function Normalize-KeyForLookup {
   param(
     [Parameter(Mandatory)][string]$Raw,
