@@ -1,15 +1,15 @@
 if ($ITBoostData.ContainsKey("organizations")){
     foreach ($row in $ITBoostData.organizations.CSVData){
         $matchedCompany = $huduCompanies | where-object {
-            ($_.name -eq $row.name) -or
-            [bool]$(Test-NameEquivalent -A $_.name -B "*$($row.name)*") 
+            ($_.name -eq $row.name) 
+            # -or [bool]$(Test-NameEquivalent -A $_.name -B "*$($row.name)*") 
             #-or [bool]$(Test-NameEquivalent -A $_.name -B "*$($row.short_name)*") 
             #-or [bool]$(Test-NameEquivalent -A $_.nickname -B "*$($row.name)*") 
             # -or [bool]$(Test-NameEquivalent -A $_.nickname -B "*$($row.short_name)*")
         } | Select-Object -First 1
         $matchedCompany = $matchedCompany ?? $(Get-HuduCompanies -name "$($row.name)")
-        $matchedCompany = $matchedCompany ?? $(Get-HuduCompanies -name "$($row.short_name)")
-        $matchedCompany = $matchedCompany ?? $($huduCompanies | where-object {[double]$(Get-SimilaritySafe -A $_.Name -b $row.name)})
+        # $matchedCompany = $matchedCompany ?? $(Get-HuduCompanies -name "$($row.short_name)")
+        # $matchedCompany = $matchedCompany ?? $($huduCompanies | where-object {[double]$(Get-SimilaritySafe -A $_.Name -b $row.name)})
         # if (-not $matchedCompany){
         #     $minSimilarity = 0.825
         #     $matchedCompany =
@@ -60,5 +60,4 @@ if ($ITBoostData.ContainsKey("organizations")){
         }
     }
 } else {write-host "No organizations data found, cannot proceed."; exit 1}
-Write-Host "Created $($($ITBoostdata.organizations.matches | where-object {$_.CsvRow -gt 0}).count) and matched $($($ITBoostdata.organizations.matches | where-object {$_.CsvRow -lt 0}).count) companies"
 $huduCompanies = Get-HuduCompanies

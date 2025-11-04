@@ -1,15 +1,34 @@
-$LocationsMap = @{
-address_1="Address 1"
-address_2="Address 2"
-city="City"
-postal_code="Postal Code"
-region = "Region"
-country = "Country"
-notes = "Notes"
-phone = "Phone"
-fax = "Fax"
 
+# individual fields
+# $LocationsMap = @{
+# address_1="Address 1"
+# address_2="Address 2"
+# city="City"
+# postal_code="Postal Code"
+# region = "Region"
+# country = "Country"
+# notes = "Notes"
+# phone = "Phone"
+# fax = "Fax"
+# }
+# addressdata field for address
+$LocationsMap = @{
+notes = "Notes"
+phone = "Primary POC"
+fax = "Special Information"
 }
+# custom layout
+# Primary POC
+# Front Desk Phone Number
+# Office Email
+# Hours of Operation
+# Door Code
+# Special Information
+# Notes
+
+
+
+
 if ($ITBoostData.ContainsKey("locations")){
 
     $LocationLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "location" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "branch" -Haystack $_.name)) } | Select-Object -First 1; $LocationLayout = $LocationLayout.asset_layout ?? $LocationLayout;
@@ -63,10 +82,11 @@ if ($ITBoostData.ContainsKey("locations")){
                     CompanyID = $matchedCompany.id
                     AssetLayoutId=$LocationLayout.id
                 }
+                $fields = @()
+
                 if ($false -eq $UseSimpleMap){
                     $NewAddressRequest["Fields"]=Build-FieldsFromRow -row $companyLocation -layoutFields $locationfields  -companyId $matchedCompany.id
                 } else {
-                    $fields = @()
                     $fields = foreach ($key in $LocationsMap.Keys) {
                     # pull value from CSV row
                     $rowVal = $row.$key ?? $null
@@ -82,6 +102,25 @@ if ($ITBoostData.ContainsKey("locations")){
                         $NewAddressRequest["Fields"]=$fields
                     }
                 }
+                if ($null -ne $AddressDataField){
+                    $newAddress=$null
+                    if ($row.address_1 -or $row.address_2 -or $row.city -or $row.region -or $row.postal_code -or $row.country) {
+                        $NewAddress = [ordered]@{
+                            address_line_1 = $row.address_1
+                            city           = $row.city
+                            state          = $(Normalize-Region $row.region)
+                            zip            = $(Normalize-Zip $row.postal_code)
+                            country_name   = $(Normalize-CountryName $row.country)
+                        }
+                        if (-not [string]::IsNullOrEmpty($row.address_2)) { $NewAddress['address_line_2'] = $addr2 }
+                    }
+                    if ($null -ne $newAddress){
+                        $fields+=@{$AddressDataField = $newAddress}
+                        $NewAddressRequest["Fields"]=$fields
+                    }
+
+                }
+
 
 
                 try {

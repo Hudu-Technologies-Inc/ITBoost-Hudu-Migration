@@ -30,7 +30,8 @@ $ITBoostData=@{
     CompletedJobs=@()
 }
 
-foreach ($job in @("get-hududata","read-csvs","companies","locations","contacts","websites","configs","expand-configs","documents","attachments","wrap-up"
+foreach ($job in @("get-hududata","read-csvs","companies"
+# ,"locations","contacts","websites","configs","expand-configs","documents","attachments","wrap-up"
 )){
 # foreach ($job in @("get-hududata","read-csvs")){
     $ITBoostData.JobState = @{Status="$job"; StartedAt=$(Get-Date); FinishedAt=$null}
