@@ -1,13 +1,43 @@
+# CsvRow                   :
+# id                       : 654409188395c73c5e17d13f
+# organization             : Ten Penny
+# first_name               : Steven
+# last_name                : Lloyd
+# contact_type             :
+# companyUuid              : 77f9d972-8a3d-478e-9e57-36663f8b15ca
+# title                    :
+# resource_type            :
+# resource_id              :
+# relationship             :
+# location                 : Batch Import 5
+# primary_phone            :
+# primary_email            :
+# notes                    : []
+# additional_contact_items :
+# password                 : []
+# types                    : []
+#             @{label        = 'first Name'; field_type   = 'Text'; show_in_list = 'true'; position     = 1},
+#             @{label        = 'Last Name'; field_type   = 'Text'; show_in_list = 'false';position     = 2},
+#             @{label        = 'Title'; field_type   = 'Text'; show_in_list = 'true'; position     = 3},
+#             @{label        = 'Contact Type'; field_type   = 'Text'; show_in_list = 'true'; position     = 4},
+#             @{label        = 'Location'; field_type   = 'AssetTag'; show_in_list = 'false';linkable_id  = $LocationLayout.ID; position     = 5},
+#             @{label        = 'Important'; field_type   = 'Text'; show_in_list = 'false';position     = 6},
+#             @{label        = 'Notes'; field_type   = 'RichText'; show_in_list = 'false';position     = 7},
+#             @{label        = 'Emails'; field_type   = 'RichText'; show_in_list = 'false';position     = 8},
+#             @{label        = 'Phones'; field_type   = 'RichText'; show_in_list = 'false';position     = 9}
+
+
 $ContactsMap = @{
 first_name="First Name"
 last_name="Last Name"
 contact_type="Contact Type"
-location="Location"
 primary_phone = "Phones"
-primary_email = "Email"
+primary_email = "Emails"
 notes = "Notes"
 title = "Title"
 }
+$LocationLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "location" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "branch" -Haystack $_.name)) } | Select-Object -First 1; $LocationLayout = $LocationLayout.asset_layout ?? $LocationLayout;
+
 function Build-HuduContactIndex {
   [CmdletBinding()]
   param([Parameter(Mandatory)][object[]]$Contacts)
@@ -76,7 +106,9 @@ if ($ITBoostData.ContainsKey("contacts")){
     } catch {
         $allHuduContacts=@()
     }
-   $contactIndex    = Build-HuduContactIndex -Contacts $allHuduContacts    
+   $contactIndex    = if ($allHuduContacts.count -gt 0) {Build-HuduContactIndex -Contacts $allHuduContacts} else {@{    ByName  = @{}
+    ByEmail = @{}
+    ByPhone = @{}}}
     foreach ($company in $groupedContacts.Keys) {
         write-host "starting $company"
         $contactsForCompany = $groupedContacts[$company]
