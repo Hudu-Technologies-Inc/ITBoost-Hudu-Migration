@@ -2,23 +2,24 @@ if ($ITBoostData.ContainsKey("organizations")){
     foreach ($row in $ITBoostData.organizations.CSVData){
         $matchedCompany = $huduCompanies | where-object {
             ($_.name -eq $row.name) -or
-            [bool]$(Test-NameEquivalent -A $_.name -B "*$($row.name)*") -or
-            [bool]$(Test-NameEquivalent -A $_.name -B "*$($row.short_name)*") -or
-            [bool]$(Test-NameEquivalent -A $_.nickname -B "*$($row.name)*") -or
-            [bool]$(Test-NameEquivalent -A $_.nickname -B "*$($row.short_name)*")} | Select-Object -First 1
+            [bool]$(Test-NameEquivalent -A $_.name -B "*$($row.name)*") 
+            #-or [bool]$(Test-NameEquivalent -A $_.name -B "*$($row.short_name)*") 
+            #-or [bool]$(Test-NameEquivalent -A $_.nickname -B "*$($row.name)*") 
+            # -or [bool]$(Test-NameEquivalent -A $_.nickname -B "*$($row.short_name)*")
+        } | Select-Object -First 1
         $matchedCompany = $matchedCompany ?? $(Get-HuduCompanies -name "$($row.name)")
         $matchedCompany = $matchedCompany ?? $(Get-HuduCompanies -name "$($row.short_name)")
         $matchedCompany = $matchedCompany ?? $($huduCompanies | where-object {[double]$(Get-SimilaritySafe -A $_.Name -b $row.name)})
-        if (-not $matchedCompany){
-            $minSimilarity = 0.825
-            $matchedCompany =
-            $huduCompanies
-            | Select-Object *, @{n='Score'; e={ [double](Get-SimilaritySafe -A $_.Name -B $row.name) }}
-            | Sort-Object Score -Descending
-            | Where-Object Score -ge $minSimilarity
-            | Select-Object -First 1
-            if ($matchedCompany){write-host "Fuzzy-Matched company $($row.name) to $($matchedCompany.name) with minimum certainty of $minsimilarity"}
-        }
+        # if (-not $matchedCompany){
+        #     $minSimilarity = 0.825
+        #     $matchedCompany =
+        #     $huduCompanies
+        #     | Select-Object *, @{n='Score'; e={ [double](Get-SimilaritySafe -A $_.Name -B $row.name) }}
+        #     | Sort-Object Score -Descending
+        #     | Where-Object Score -ge $minSimilarity
+        #     | Select-Object -First 1
+        #     if ($matchedCompany){write-host "Fuzzy-Matched company $($row.name) to $($matchedCompany.name) with minimum certainty of $minsimilarity"}
+        # }
         if ($matchedCompany){
             Write-Host "Matched company $($matchedCompany.name) to $($row.name)"
             $ITBoostData.organizations["matches"]+=@{
