@@ -4,15 +4,13 @@ if ($ITBoostData.ContainsKey("domains")){
         if (-not [string]::IsNullOrEmpty(($row.organization))){
             $matchedCompany = $huduCompanies | where-object {
                 ($_.name -eq $company) -or
-                [bool]$(Test-NameEquivalent -A $_.name -B "*$($company)*") -or
-                [bool]$(Test-NameEquivalent -A $_.nickname -B "*$($company)*")} | Select-Object -First 1
+                [bool]$(Test-NameEquivalent -A $_.name -B "$($row.organization)")
             $matchedCompany = $huduCompanies | Where-Object {
                 $_.name -eq $company -or
-                (Test-NameEquivalent -A $_.name -B "*$company*") -or
-                (Test-NameEquivalent -A $_.nickname -B "*$company*")
+                (Test-NameEquivalent -A $_.name -B "*$($row.organization)*")
                 } | Select-Object -First 1
 
-            $matchedCompany = $matchedCompany ?? (Get-HuduCompanies -Name $company | Select-Object -First 1)
+            $matchedCompany = $matchedCompany ?? (Get-HuduCompanies -Name $row.organization | Select-Object -First 1)
         } else {
             $matchedCompany = Select-Objectfromlist -message "which company has website $($row.name)?" -objects $(get-huducompanies) -allowNull $false
         }
