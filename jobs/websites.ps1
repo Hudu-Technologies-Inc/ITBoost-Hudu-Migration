@@ -1,19 +1,22 @@
 # Match or create websites from domains data
 if ($ITBoostData.ContainsKey("domains")){
     foreach ($row in $ITBoostData.domains.CSVData){
-        if ($allHuduWebsites -and $allHuduWebsites.count -gt 1){
-            $MatchedWebsite=$allHuduWebsites | where-object {$_ -and -not [string]::IsNullOrWhiteSpace($_.name) -and $_.name -eq $row.name -or[bool]$(Test-NameEquivalent -A "$(Get-NormalizedWebsiteHost -Website "$($_.name)")" -B "$(Get-NormalizedWebsiteHost "$($row.name)")")}
-        } else {$MatchedWebsite = $null}
-        $targetCompany = $($ITBoostdata.organizations.Matches | where-object {$_.CompanyName -ilike "*$($row.'organization')*"} | Select-Object -First 1).HuduCompany
-        
-        # if website exists, match company by who owns website in Hudu
-        if (-not $targetCompany){
-            if ($matchedWebsite){
-                $matchedCompany = $huduCompanies | where-object {$_.id -eq $matchedwebsite.company_id}
-            } else {
-                $targetCompany = Select-ObjectFromList -message "Which company does this website belong to?" -objects $huduCompanies -allownull $false
-            }
+        if (-not [string]::IsNullOrEmpty(($row.organization))){
+            $matchedCompany = $huduCompanies | where-object {
+                ($_.name -eq $company) -or
+                [bool]$(Test-NameEquivalent -A $_.name -B "*$($company)*") -or
+                [bool]$(Test-NameEquivalent -A $_.nickname -B "*$($company)*")} | Select-Object -First 1
+            $matchedCompany = $huduCompanies | Where-Object {
+                $_.name -eq $company -or
+                (Test-NameEquivalent -A $_.name -B "*$company*") -or
+                (Test-NameEquivalent -A $_.nickname -B "*$company*")
+                } | Select-Object -First 1
+
+            $matchedCompany = $matchedCompany ?? (Get-HuduCompanies -Name $company | Select-Object -First 1)
+        } else {
+            $matchedCompany = Select-Objectfromlist -message "which company has website $($row.name)?" -objects $(get-huducompanies) -allowNull $false
         }
+
         $notes = Get-NotesFromArray -notesInput $($row.notes ?? @())
         if ($matchedCompany -and -not $MatchedWebsite){
                 $newWebsiteRequest=@{
