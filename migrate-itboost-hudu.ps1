@@ -6,6 +6,8 @@ $locations_folder=$(join-path $debug_folder "locations")
 $contacts_folder=$(join-path $debug_folder "contacts")
 $docs_folder=$(join-path $debug_folder "docs")
 $UseSimpleMap = $UseSimpleMap ?? $true
+$=@()
+
 
 foreach ($folder in @($debug_folder, $contacts_folder, $locations_folder, $docs_folder)) {
     if (!(Test-Path -Path "$folder")) { New-Item "$folder" -ItemType Directory }
@@ -28,12 +30,24 @@ if ($null -eq $UseSimpleMap){$UseSimpleMap = $true}
 $ITBoostData=@{
     JobState=@{}
     CompletedJobs=@()
+    ErrorsEncountered=@()
 }
 
-foreach ($job in @("read-csvs"
-# "contacts"
-# ,"locations",
-#"contacts","websites","configs","expand-configs","documents","attachments","wrap-up"
+
+
+foreach ($job in @(
+"read-csvs",
+"get-hududata",
+"companies",
+"locations",
+"contacts",
+"websites",
+"configs",
+"expand-configs",
+"documents",
+"attachments",
+"passwords",
+,"wrap-up"
 )){
 # foreach ($job in @("get-hududata","read-csvs")){
     $ITBoostData.JobState = @{Status="$job"; StartedAt=$(Get-Date); FinishedAt=$null}
