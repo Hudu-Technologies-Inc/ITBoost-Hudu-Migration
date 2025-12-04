@@ -81,18 +81,8 @@ if ($ITBoostData.ContainsKey("documents")){
     foreach ($company in $groupeddocuments.Keys) {
         $documentsForCompany = $groupeddocuments[$company]
         write-host "starting $company with $($documentsForCompany.count) docs"
-        $matchedCompany = $huduCompanies | where-object {
-            ($_.name -eq $company) -or
-            [bool]$(Test-NameEquivalent -A $_.name -B "*$($company)*") -or
-            [bool]$(Test-NameEquivalent -A $_.nickname -B "*$($company)*")} | Select-Object -First 1
-        $matchedCompany = $huduCompanies | Where-Object {
-            $_.name -eq $company -or
-            (Test-NameEquivalent -A $_.name -B "*$company*") -or
-            (Test-NameEquivalent -A $_.nickname -B "*$company*")
-            } | Select-Object -First 1
-
-        $matchedCompany = $matchedCompany ?? (Get-HuduCompanies -Name $company | Select-Object -First 1)
-
+        $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies
+        
         if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { continue }
         foreach ($companydocument in $documentsForCompany){
             $matchedDocument = $null

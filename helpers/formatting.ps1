@@ -38,6 +38,48 @@ $LASTNAME_LABELS  = @('last name','lastname','surname','family name')
 $EMAIL_LABELS     = @('email','e-mail','primary email','work email')
 $PHONE_LABELS     = @('phone','phone number','primary phone','work phone','office phone','mobile','cell','cell phone')
 
+function Get-HuduLayoutLike {
+  param ([array]$LabelSet)
+
+  foreach ($layout in $(get-huduassetlayouts)){
+    foreach ($Label in $LabelSet){
+      if ($true -eq $(Test-Equiv -A $locationLabel -$layout.name)){
+        return $layout
+      }
+    }
+  }
+  Write-Host "No location layout found. Ensure your location layout name is in LocationLayoutNames array ($LocationLayoutNames)"
+  return $null
+}
+function Get-HuduCompanyFromName {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$CompanyName,
+
+        [array]$HuduCompanies,
+
+        [bool]$includenicknames = $false
+    )
+    if ([string]::IsNullOrWhiteSpace($CompanyName)) { return $null }
+    $matchedCompany = $null
+    $matchedCompany = $HuduCompanies | where-object {
+            ($_.name -ieq $CompanyName) -or
+            [bool]$(Test-NameEquivalent -A $_.name -B $CompanyName)`
+        } | Select-Object -First 1
+    $matchedCompany = $matchedCompany ?? $(Get-HuduCompanies -Name $CompanyName | select-object -first 1)
+    $matchedCompany = $matchedCompany ?? (get-huducompanies | where-object {[bool]$(Test-NameEquivalent -A $_.name -B $CompanyName)} | select-object -first 1)
+    
+    if ($includenicknames){
+        $matchedCompany = $HuduCompanies | where-object {
+                ($_.nickname -ieq $CompanyName) -or
+                [bool]$(Test-NameEquivalent -A $_.nickname -B $CompanyName)`
+            } | Select-Object -First 1
+        $matchedCompany = $matchedCompany ?? (get-huducompanies | where-object {[bool]$(Test-NameEquivalent -A $_.name -B $CompanyName)} | select-object -first 1)
+    }
+    return $matchedCompany
+}
+
+
 function Get-HuduFieldValue {
   [CmdletBinding()]
   param(
@@ -808,6 +850,8 @@ function Test-MostlyDigits([object]$v){
   return ($digits / [double]$s.Length) -ge 0.7
 }
 # map a target label to a canonical family (quick & simple)
+
+
 
 function Test-IsLocationLayoutName {
   param([string]$Name)

@@ -128,12 +128,7 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
 
         Write-Host "starting $company"
 
-        $matchedCompany = $huduCompanies | Where-Object {
-            ($_.name -eq $company) -or
-            [bool](Test-NameEquivalent -A $_.name     -B "*$company*") -or
-            [bool](Test-NameEquivalent -A $_.nickname -B "*$company*")
-        } | Select-Object -First 1
-        $matchedCompany = $matchedCompany ?? (Get-HuduCompanies -Name $company | Select-Object -First 1)
+        $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies
         if (-not $matchedCompany.id) { Write-Host "NO COMPANY matched for $company"; continue }
 
         $groupsForCompany = $ByCompanyById[$company]

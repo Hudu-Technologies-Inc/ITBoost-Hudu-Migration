@@ -61,22 +61,7 @@ if ($ITBoostData.ContainsKey("configurations")){
     write-host "Uniq companies $($uniqueCompanies.count)"
     foreach ($company in $uniqueCompanies) {
         $matchedCompany = $null
-        Write-Host "starting $company"
-        $configsForCompany = $ITBoostData.configurations.CSVData | Where-Object { $_.organization -eq $company }
-        write-host "$($configsForCompany.count) configs for company"
-            $matchedCompany = $huduCompanies | where-object {
-                ($_.name -eq $company) -or
-                [bool]$(Test-NameEquivalent -A $_.name -B "*$($company)*") -or
-                [bool]$(Test-NameEquivalent -A $_.nickname -B "*$($company)*")} | Select-Object -First 1
-            $matchedCompany =$matchedCompany ?? $huduCompanies | Where-Object {
-                $_.name -eq $company -or
-                (Test-NameEquivalent -A $_.name -B "*$company*") -or
-                (Test-NameEquivalent -A $_.nickname -B "*$company*")
-                } | Select-Object -First 1
-
-            $matchedCompany = $matchedCompany ?? (Get-HuduCompanies -Name $company | Select-Object -First 1)
-
-    if (-not $matchedCompany.id) {
+$matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies    if (-not $matchedCompany.id) {
         write-host "NO COMPANY matched for $Company"
          continue 
         } else {}

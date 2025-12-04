@@ -19,7 +19,7 @@ while ($true) {
     if ($successRead) {break}
 }
 
-$LocationLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "location" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "branch" -Haystack $_.name)) } | Select-Object -First 1; $LocationLayout = $LocationLayout.asset_layout ?? $LocationLayout;
+$LocationLayout = Get-HuduLayoutLike -labelSet @('location','branch','office location','site','building','sucursal','standort','filiale','vestiging','sede')
 
 if ($ITBoostData.ContainsKey("$FlexiLayoutName")){
     $flexisLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "$FlexiLayoutName" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "$FlexiLayoutName" -Haystack $_.name)) } | Select-Object -First 1
@@ -40,18 +40,7 @@ if ($ITBoostData.ContainsKey("$FlexiLayoutName")){
     foreach ($company in $groupedflexis.Keys) {
         write-host "starting $company"
         $flexisForCompany = $groupedflexis[$company]
-        $matchedCompany = $huduCompanies | where-object {
-            ($_.name -eq $company) -or
-            [bool]$(Test-NameEquivalent -A $_.name -B "*$($company)*") -or
-            [bool]$(Test-NameEquivalent -A $_.nickname -B "*$($company)*")} | Select-Object -First 1
-        $matchedCompany = $huduCompanies | Where-Object {
-            $_.name -eq $company -or
-            (Test-NameEquivalent -A $_.name -B "*$company*") -or
-            (Test-NameEquivalent -A $_.nickname -B "*$company*")
-            } | Select-Object -First 1
-
-            $matchedCompany = $matchedCompany ?? (Get-HuduCompanies -Name $company | Select-Object -First 1)
-
+        $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies
         if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { continue }
         foreach ($companyflexi in $flexisForCompany){
             $matchedflexi = Find-Huduflexi `

@@ -13,18 +13,7 @@ if ($ITBoostData.ContainsKey("passwords")) {
 
   foreach ($company in $passwords.Keys) {
     Write-Host "starting $company"
-    $matchedCompany = $huduCompanies | Where-Object { $_.name -eq $company} | Select-Object -first 1
-
-    $matchedCompany = $matchedCompany ?? ($huduCompanies | Where-Object {
-      ($_.name -eq $company) -or
-      [bool](Test-NameEquivalent -A $_.name     -B "*$company*") -or
-      [bool](Test-NameEquivalent -A $_.nickname -B "*$company*")
-    } | Select-Object -First 1)
-
-    $matchedCompany = $matchedCompany ?? (Get-HuduCompanies -Name $company | Select-Object -First 1)
-
-    $matchedCompany = $matchedCompany.company ?? $matchedCompany
-
+    $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies
     Write-Host "Matched to company $($matchedCompany.name)"
     if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { 
             $createdcompany = New-HuduCompany -Name "$($company)".Trim()
