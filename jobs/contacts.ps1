@@ -111,6 +111,10 @@ function Build-HuduContactIndex {
   return $idx
 }
 
+
+# load companies index if available
+$ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
+
 if ($ITBoostData.ContainsKey("contacts")){
     $contactsLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "contact" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "people" -Haystack $_.name)) } | Select-Object -First 1
     if (-not $contactsLayout){
@@ -140,7 +144,7 @@ if ($ITBoostData.ContainsKey("contacts")){
     foreach ($company in $groupedContacts.Keys) {
         write-host "starting $company"
         $contactsForCompany = $groupedContacts[$company]
-        $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies
+        $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
         if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { continue }
         foreach ($companyContact in $contactsForCompany){
             $matchedContact = Find-HuduContact `

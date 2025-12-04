@@ -17,6 +17,9 @@ phone = "Front Desk Phone Number"
 # Notes - RichText
 
 $huduCompanies = $huduCompanies ?? $(get-huducompanies)
+# load companies index if available
+$ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
+
 if ($ITBoostData.ContainsKey("locations")){
 
     $LocationLayout = Get-HuduLayoutLike -labelSet @('location','branch','office location','site','building','sucursal','standort','filiale','vestiging','sede')
@@ -48,7 +51,7 @@ if ($ITBoostData.ContainsKey("locations")){
 
         $locationsSeen = @()
         $locationsForCompany=$groupedLocations["$company"]
-        $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies
+        $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
         if (-not $matchedCompany) {continue}
         # $matchedCompany=$matchedCompany ?? $($huducompanies | where-object {$_.name -eq $(Select-ObjectFromList -objects $($huduCompanies.name | sort-object) -message "Which company to match for source company, named $company")} | select-object -first 1)
         write-host "$($locationsForCompany.count) locations for $company, hudu company id: $($matchedCompany.id)"

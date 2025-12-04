@@ -52,17 +52,33 @@ function Get-HuduLayoutLike {
   return $null
 }
 function Get-HuduCompanyFromName {
+    # use index first. Then existing list. Then API call.
     param (
         [Parameter(Mandatory = $true)]
         [string]$CompanyName,
 
         [array]$HuduCompanies,
 
-        [bool]$includenicknames = $false
+        [bool]$includenicknames = $false,
+        [array]$existingIndex = $null
     )
     if ([string]::IsNullOrWhiteSpace($CompanyName)) { return $null }
     $matchedCompany = $null
-    $matchedCompany = $HuduCompanies | where-object {
+    if ($existingIndex -ne $null){
+        $matchedCompany = $matchedCompany ?? $existingIndex | where-object {
+            ($_.CompanyName -ieq $CompanyName) -or
+            [bool]$(Test-NameEquivalent -A $_.CompanyName -B $CompanyName) } | Select-Object -First 1
+        if ($includenicknames){
+            $matchedCompany = $matchedCompany ?? $existingIndex | where-object {
+                (-not [string]::IsNullOrWhiteSpace($_.HuduObject.nickname)) -and (
+                    ($_.HuduObject.nickname -ieq $CompanyName) -or
+                    [bool]$(Test-NameEquivalent -A $_.HuduObject.nickname -B $CompanyName))
+            } | Select-Object -First 1
+        }
+    }
+
+
+    $matchedCompany = $matchedCompany ?? $HuduCompanies | where-object {
             ($_.name -ieq $CompanyName) -or
             [bool]$(Test-NameEquivalent -A $_.name -B $CompanyName)`
         } | Select-Object -First 1
@@ -79,6 +95,25 @@ function Get-HuduCompanyFromName {
     return $matchedCompany
 }
 
+function Get-HuduAssetFromName {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+        [Parameter(Mandatory = $true)]
+        [int]$AssetLayoutId,
+        [array]$Assets
+    )
+    if ([string]::IsNullOrWhiteSpace($Name) -or -not $AssetLayoutId -or $AssetLayoutId -lt 1) { return $null }
+    $matchedAsset = $null
+    $matchedAsset = $Assets | where-object {
+            ($_.name -ieq $Name) -or
+            [bool]$(Test-NameEquivalent -A $_.name -B $Name)`
+        } | Select-Object -First 1
+    $matchedAsset = $matchedAsset ?? 
+        $(Get-HuduAssets -AssetLayoutId $AssetLayoutId -Name $CompanyName) ?? 
+         (get-huduassets -AssetLayoutId $AssetLayoutId | where-object {[bool]$(Test-NameEquivalent -A $_.name -B $Name)} | select-object -first 1)
+    return $matchedCompany
+}
 
 function Get-HuduFieldValue {
   [CmdletBinding()]

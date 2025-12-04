@@ -1,7 +1,7 @@
 $huducompanies = $huduCompanies ?? $(get-huducompanies)
 if ($ITBoostData.ContainsKey("organizations")){
     foreach ($row in $ITBoostData.organizations.CSVData){
-        $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies
+        $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
         if ($matchedCompany){
             Write-Host "Matched company $($matchedCompany.name) to $($row.name)"
             $ITBoostData.organizations["matches"]+=@{
@@ -55,3 +55,4 @@ if ($ITBoostData.ContainsKey("organizations")){
     }
 } else {write-host "No organizations data found, cannot proceed."; exit 1}
 $huduCompanies = Get-HuduCompanies
+$ITBoostData.organizations["matches"] | convertto-json -depth 99 | out-file $companiesIndex -Force

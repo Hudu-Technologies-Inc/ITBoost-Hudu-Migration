@@ -6,6 +6,9 @@ $PassProps = @{
   server        = "Url"            # many cmdlets use Url, not URL
 }
 
+# load companies index if available
+$ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
+
 if ($ITBoostData.ContainsKey("passwords")) {
   $passwords = $ITBoostData.passwords.CSVData | Group-Object { $_.organization } -AsHashTable -AsString
 
@@ -13,7 +16,7 @@ if ($ITBoostData.ContainsKey("passwords")) {
 
   foreach ($company in $passwords.Keys) {
     Write-Host "starting $company"
-    $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies
+    $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
     Write-Host "Matched to company $($matchedCompany.name)"
     if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { 
             $createdcompany = New-HuduCompany -Name "$($company)".Trim()

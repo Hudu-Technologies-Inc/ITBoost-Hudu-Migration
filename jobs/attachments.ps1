@@ -15,6 +15,9 @@ if ($allowConvert -eq $true){
     $sofficePath=$(if ($true -eq $portableLibreOffice) {$(Get-LibrePortable -tmpfolder $tmpfolder)} else {$(Get-LibreMSI -tmpfolder $tmpfolder)})
 }
 
+# load companies index if available
+$ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
+
 if ($ITBoostData.ContainsKey("documents")){
 
     $groupeddocuments = $ITBoostData.documents.CSVData | Group-Object { $_.organization } -AsHashTable -AsString
@@ -43,7 +46,7 @@ if ($ITBoostData.ContainsKey("documents")){
     foreach ($company in $groupeddocuments.Keys) {
         $documentsForCompany = $groupeddocuments[$company]
         write-host "starting $company with $($documentsForCompany.count) docs"
-        $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies
+        $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
         if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { continue }
         foreach ($companydocument in $documentsForCompany){
             $matchedDocument = $null

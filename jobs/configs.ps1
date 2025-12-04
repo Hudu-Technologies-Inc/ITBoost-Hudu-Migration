@@ -22,6 +22,9 @@ configuration_interfaces="configuration interfaces"
 }
 $ConfigurationsHaveBeenApplied=$false
 
+# load companies index if available
+$ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
+
 if ($ITBoostData.ContainsKey("configurations")){
 
     $huduCompanies = $huduCompanies ?? $(get-huducompanies)
@@ -61,10 +64,11 @@ if ($ITBoostData.ContainsKey("configurations")){
     write-host "Uniq companies $($uniqueCompanies.count)"
     foreach ($company in $uniqueCompanies) {
         $matchedCompany = $null
-$matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies    if (-not $matchedCompany.id) {
+    $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
+    if (-not $matchedCompany.id) {
         write-host "NO COMPANY matched for $Company"
          continue 
-        } else {}
+    } else {}
 
     foreach ($companyConfig in $configsForCompany) {
         # 4a) find existing

@@ -74,6 +74,9 @@ $FieldsAsArrays = @(
     "configuration_interfaces"
 )
 
+# load companies index if available
+$ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
+
 if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHaveBeenApplied){
     $namesSeen = @()   
     $huduCompanies = $huduCompanies ?? $(get-huducompanies)
@@ -128,7 +131,7 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
 
         Write-Host "starting $company"
 
-        $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies
+        $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
         if (-not $matchedCompany.id) { Write-Host "NO COMPANY matched for $company"; continue }
 
         $groupsForCompany = $ByCompanyById[$company]

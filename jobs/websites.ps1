@@ -1,8 +1,10 @@
+# load companies index if available
+$ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
 # Match or create websites from domains data
 if ($ITBoostData.ContainsKey("domains")){
     foreach ($row in $ITBoostData.domains.CSVData){
         if (-not [string]::IsNullOrEmpty(($row.organization))){
-            $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies
+            $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
             $matchedCompany = $matchedCompany ?? (Get-HuduCompanies -Name $row.organization | Select-Object -First 1)
         } else {
             $matchedCompany = Select-Objectfromlist -message "which company has website $($row.name)?" -objects $(get-huducompanies) -allowNull $false

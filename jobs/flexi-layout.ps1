@@ -19,6 +19,8 @@ while ($true) {
     if ($successRead) {break}
 }
 
+# load companies index if available
+$ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
 $LocationLayout = Get-HuduLayoutLike -labelSet @('location','branch','office location','site','building','sucursal','standort','filiale','vestiging','sede')
 
 if ($ITBoostData.ContainsKey("$FlexiLayoutName")){
@@ -40,7 +42,7 @@ if ($ITBoostData.ContainsKey("$FlexiLayoutName")){
     foreach ($company in $groupedflexis.Keys) {
         write-host "starting $company"
         $flexisForCompany = $groupedflexis[$company]
-        $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies
+        $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
         if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { continue }
         foreach ($companyflexi in $flexisForCompany){
             $matchedflexi = Find-Huduflexi `
