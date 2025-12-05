@@ -130,7 +130,7 @@ function New-GeneratedTemplateFromFlexiHeaders {
 
     $idx = 0
 
-    foreach ($prop in $flexiProps | where-object {-not @("id", "CsvRow","Location","organization","resource_id","resource_type") -contains $_}) {
+    foreach ($prop in $flexiProps) {
         $idx++
         $label = ($prop -replace '_', ' ')
         $escapedLabel = $label -replace "'", "''"
@@ -147,6 +147,43 @@ $TemplateOutput = @"
 `$flexiFields = @(
 $($flexiFieldsLines -join ",`n")
 )
+
+`$flexisMap = @{
+$($flexisMapLines -join "`n")
+}
+"@ + @'
+# smoosh source label items to destination smooshable
+$smooshLabels = @()
+$smooshToDestinationLabel = $null
+$jsonSourceFields = @()
+'@
+    $TemplateOutput | Set-Content -Path $outFile -Encoding UTF8 -Force
+
+    return $TemplateOutput
+}
+
+function New-GeneratedTemplateFromHuduLayout {
+    param ([pscustomobject]$HuduLayout, [hashtable]$ITboostdata, [string]$SourceProperty, [string]$outFile)
+    $HuduLayout = $HuduLayout.asset_layout ?? $HuduLayout
+    $flexiProps = Get-CSVProperties $ITboostdata.$SourceProperty.CSVData
+
+    $HuduFields = $HuduLayout.fields
+
+    $ReferenceLines = @()
+    $flexisMapLines   = @()
+
+    foreach ($field in $HuduFields) {
+            $ReferenceLines += "# $($field | convertto-json -depth 99) # for reference"
+    }
+    foreach ($prop in $flexiProps) {
+        $escapedProp  = $prop  -replace "'", "''"
+        $flexisMapLines +=
+            "    '$($escapedProp -replace " ","_")' = ' '"
+    }
+
+$TemplateOutput = @"
+# Hudu Destinatio Reference Section
+$($ReferenceLines -join ",`n")
 
 `$flexisMap = @{
 $($flexisMapLines -join "`n")
