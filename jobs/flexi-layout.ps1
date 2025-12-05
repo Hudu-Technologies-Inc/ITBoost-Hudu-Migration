@@ -140,9 +140,9 @@ if ($ITBoostData.ContainsKey("$sourceProperty")){
                     }
                 }
                 if ($SmooshedNotes.Count -gt 0){
-                    write-host "$($SmooshedNotes.Count) fields smooshed into $smooshToDestinationLabel for $($companyflexi.name) as $(if ($true -eq $SmooshFieldIsRichTExt) {"RichText"} else {"Text"})"
+                    write-host "$($SmooshedNotes.Count) fields smooshed into $smooshToDestinationLabel for $($companyflexi.$nameField ?? $companyflexi.name) as $(if ($true -eq $SmooshFieldIsRichTExt) {"RichText"} else {"Text"})"
                     $smooshedContent = if ($true -eq $SmooshFieldIsRichTExt) {$SmooshedNotes -join "<br><hr><br>"} else { $SmooshedNotes -join "`n`n" }
-                    $fields+=@{ $smooshToDestinationLabel = "$($smooshedContent -replace "[]",'')".Trim() }
+                    $fields+=@{ $smooshToDestinationLabel = "$smooshedContent".Trim() }
             }
             
         

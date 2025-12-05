@@ -102,7 +102,6 @@
 
 $flexisMap = @{
     'Internal_IP_Address' = 'IP Address'
-    'Management' = 'Subscription/Support Renewal'
     'Manufacturer' = 'Manufacturer'
 
 
@@ -123,7 +122,8 @@ $smooshLabels = @(
 'Serial_#' 
 'SNMP_Info' 
 'WG_Read-Only_or_Other_Firewall_Password' 
-'WG_Read-Write_Password' 
+'WG_Read-Write_Password'
+'Subscription/Support Renewal'
 )
 $smooshToDestinationLabel = "Notes"
 $jsonSourceFields = @()
