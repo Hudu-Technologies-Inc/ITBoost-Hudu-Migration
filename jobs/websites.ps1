@@ -73,3 +73,13 @@ if ($ITBoostData.ContainsKey("domains")){
 } else {write-host "no websites in CSV! skipping."}
 $allHuduWebsites=Get-HuduWebsites
 $allHuduWebsites | Foreach-Object {write-host "Enabling advanced monitoring features for $($(Set-HuduWebsite -id $_.id -EnableDMARC 'true' -EnableDKIM 'true' -EnableSPF 'true' -DisableDNS 'false' -DisableSSL 'false' -DisableWhois 'false' -Paused 'false').name)" -ForegroundColor DarkCyan}
+
+$ITBoostData.'ssl-certificates'.CSVData | ForEach-Object {
+    $company = $null
+    if ([string]::IsNullOrEmpty($_.organization)) {
+        $company = Get-HuduCompanies -id $internalCompanyId; $company = $company.company ?? $company;
+    } else {
+        $company = Get-HuduCompanies -name $_.organization; $company = $company.company ?? $company;
+    }
+    New-HuduWebsite -Name "https://$($_.host)" -CompanyId $company.id ?? $internalCompanyId -Notes "From ITBoost -SSL"
+ }

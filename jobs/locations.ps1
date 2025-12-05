@@ -61,15 +61,15 @@ if ($ITBoostData.ContainsKey("locations")){
             $matchedlocation = $allHuduLocations | where-object {$_.company_id -eq $matchedCompany.id -and  $($(test-equiv -A $_.name -B $companyLocation.name) -or $(test-equiv -A $companyLocation.address_1 -B $($_.fields | where-object {$_.label -ilike "address"} | select-object -first 1).value))} | select-object -first 1
             if ($matchedLocation){
                 Write-Host "Matched $($companyLocation.name) to $($matchedlocation.name) for $($matchedCompany.name)"
-                $ITBoostData.locations["matches"]+=@{
-                    CompanyName=$companyLocation.organization
-                    CsvRow=$companyLocation.CsvRow
-                    ITBID=$companyLocation.id
-                    HuduID=$MatchedWebsite.id
-                    HuduObject=$MatchedWebsite
-                    HuduCompanyId=$MatchedWebsite.company_id
-                    PasswordsToCreate=$($companyLocation.password ?? @())
-                }
+                # $ITBoostData.locations["matches"]+=@{
+                #     CompanyName=$companyLocation.organization
+                #     CsvRow=$companyLocation.CsvRow
+                #     ITBID=$companyLocation.id
+                #     HuduID=$MatchedWebsite.id
+                #     HuduObject=$MatchedWebsite
+                #     HuduCompanyId=$MatchedWebsite.company_id
+                #     PasswordsToCreate=$($companyLocation.password ?? @())
+                # }
             } else {
                 $NewAddressRequest=@{
                     Name=$companyLocation.name
@@ -123,16 +123,16 @@ if ($ITBoostData.ContainsKey("locations")){
                     write-host "Error creating location: $_"
                 }
                 if ($newLocation){
-                    $ITBoostData.locations["matches"]+=@{
-                        CompanyName=$companyLocation.organization
-                        CsvRow=$companyLocation.CsvRow
-                        ITBID=$companyLocation.id
-                        Name=$companyLocation.name
-                        HuduID=$newLocation.id
-                        HuduObject=$newLocation
-                        HuduCompanyId=$newLocation.company_id
-                        PasswordsToCreate=$($companyLocation.password ?? @())
-                    }            
+                    # $ITBoostData.locations["matches"]+=@{
+                    #     CompanyName=$companyLocation.organization
+                    #     CsvRow=$companyLocation.CsvRow
+                    #     ITBID=$companyLocation.id
+                    #     Name=$companyLocation.name
+                    #     HuduID=$newLocation.id
+                    #     HuduObject=$newLocation
+                    #     HuduCompanyId=$newLocation.company_id
+                    #     PasswordsToCreate=$($companyLocation.password ?? @())
+                    # }            
                 }
             }
         }
