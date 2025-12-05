@@ -1,5 +1,5 @@
 # reset all possible user-mapping inputs
-$smooshLabels = @(); $smooshToDestinationLabel = $null; $flexisMap = @{}; $flexiFields = @(); $jsonSourceFields = @()
+$smooshLabels = @(); $smooshToDestinationLabel = $null; $flexisMap = @{}; $flexiFields = @(); $jsonSourceFields = @(); $nameField = "Name";
 $standardlayouts = @('locations','configurations','contacts','domains','organizations','passwords')
 
 # Choose next layout to target, a template will be generated for you to fill out mappings
@@ -20,14 +20,14 @@ if ($true -eq $usingExistingLayout){
     $FlexiLayoutName = $sourceProperty
 }
 $completedFlexlayouts+=$FlexiLayoutName
-$flexiTemplate = "$project_workdir\mappings-$FlexiLayoutName.ps1"
+$flexiTemplate = "$project_workdir\mappings-$(get-safefilename $FlexiLayoutName).ps1"
 
 if ($true -eq $usingExistingLayout){
     write-host "generating mapping template for existing layout $($existingLayout.name)"
-    New-GeneratedTemplateFromHuduLayout -HuduLayout $existingLayout -ITboostdata $ITBoostData -sourceProperty $sourceProperty -outFile $(Get-SafeFilename $flexiTemplate)
+    New-GeneratedTemplateFromHuduLayout -HuduLayout $existingLayout -ITboostdata $ITBoostData -sourceProperty $sourceProperty -outFile $flexiTemplate
 } else {
     write-host "generating mapping template for New or Newly-Created layout $($FlexiLayoutName)"
-    New-GeneratedTemplateFromFlexiHeaders -ITboostdata $ITBoostData -FlexiLayoutName $FlexiLayoutName -outFile $(Get-SafeFilename $flexiTemplate)
+    New-GeneratedTemplateFromFlexiHeaders -ITboostdata $ITBoostData -FlexiLayoutName $FlexiLayoutName -outFile $flexiTemplate
 }
 # Copy-Item "$project_workdir\jobs\flexi-map.ps1" $flexiTemplate -Force
 Read-Host "Please fill out mappings in $flexiTemplate and ensure its completion. then, press enter."
@@ -41,12 +41,17 @@ while ($true) {
     }
     if ($successRead) {break}
 }
+if ($smooshLabels -and $smooshLabels.count -gt 0){
+    write-host "smooshing $($smooshLabels.count) fields into $smooshToDestinationLabel"
+}
+
+
 
 # load companies index if available
 $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
 $LocationLayout = Get-HuduAssetLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "location" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "locations" -Haystack $_.name)) } | Select-Object -First 1
 
-if ($ITBoostData.ContainsKey("$FlexiLayoutName")){
+if ($ITBoostData.ContainsKey("$sourceProperty")){
     if ($usingExistingLayout -and $existingLayout) {
         $flexisLayout = $existingLayout.asset_layout ?? $existingLayout
     } else {    
@@ -58,7 +63,12 @@ if ($ITBoostData.ContainsKey("$FlexiLayoutName")){
         $flexisLayout = Get-HuduAssetLayouts -id $flexisLayout.id
     }
     $flexisFields = $flexisLayout.fields
-    $SmooshFieldIsRichTExt = [bool]$(($flexisFields | Where-Object { $_.label -eq $($smooshToDestinationLabel) } | Select-Object -First 1).field_type -ieq "RichText")
+    $dateFields = $flexisFields | Where-Object { $_.field_type -eq "Date" } | Select-Object -ExpandProperty label
+    $NumberFields = $flexisFields | Where-Object { $_.field_type -eq "Number" } | Select-Object -ExpandProperty label
+
+    $SmooshFieldIsRichTExt = [bool]$(($flexisFields | Where-Object { $_.label -eq $($smooshToDestinationLabel) } | Select-Object -First 1).field_type -ieq "RichText") ?? $true
+    Write-Host "Smooshable dest is $(if ($true -eq $SmooshFieldIsRichTExt) {"RichText"} else {"Text"})"
+    
     $groupedflexis = $ITBoostData.$sourceProperty.CSVData | Group-Object { $_.organization } -AsHashTable -AsString
 
     try {
@@ -76,17 +86,13 @@ if ($ITBoostData.ContainsKey("$FlexiLayoutName")){
                                 Select-Object -First 1
             }
             if ($matchedflexi){
-                    $humanName = ("{0} {1}" -f $companyflexi.first_name, $companyflexi.last_name).Trim()
-                    Write-Host "Matched $humanName to $($matchedflexi.name) for $($matchedCompany.name)"
-
-                    # ensure the array exists once
-                    if (-not $ITBoostData.flexis.ContainsKey('matches')) { $ITBoostData.flexis['matches'] = @() }
 
                     continue
 
             } else {
+            
                 $newflexirequest=@{
-                    Name="$($companyflexi.first_name) $($companyflexi.last_name)".Trim()
+                    Name=$($companyflexi.$nameField ?? $companyflexi.name)
                     CompanyID = $matchedCompany.id
                     AssetLayoutId=$flexisLayout.id
                 }
@@ -100,7 +106,14 @@ if ($ITBoostData.ContainsKey("$FlexiLayoutName")){
                     if ([string]::IsNullOrWhiteSpace($rowVal)) { continue }
 
                     $huduField = $flexisMap[$key]
-                    $fields+=@{ $($huduField) = $rowVal.Trim() }
+                    if ($dateFields -contains $huduField){
+                        $rowVal = Get-CoercedDate -inputDate $rowVal
+                    } elseif ($NumberFields -contains $huduField){
+                        $rowVal = Get-CastIfNumeric -Value $rowVal
+                    }
+
+
+                    $fields+=@{ $($huduField) = "$rowVal".Trim() }
                 }
 
                 if (-not $([string]::IsNullOrWhiteSpace($companyflexi.location))){
@@ -129,7 +142,7 @@ if ($ITBoostData.ContainsKey("$FlexiLayoutName")){
                 if ($SmooshedNotes.Count -gt 0){
                     write-host "$($SmooshedNotes.Count) fields smooshed into $smooshToDestinationLabel for $($companyflexi.name) as $(if ($true -eq $SmooshFieldIsRichTExt) {"RichText"} else {"Text"})"
                     $smooshedContent = if ($true -eq $SmooshFieldIsRichTExt) {$SmooshedNotes -join "<br><hr><br>"} else { $SmooshedNotes -join "`n`n" }
-                    $fields+=@{ $smooshToDestinationLabel = "$smooshedContent".Trim() }
+                    $fields+=@{ $smooshToDestinationLabel = "$($smooshedContent -replace "[]",'')".Trim() }
             }
             
         
