@@ -103,14 +103,14 @@ if ($ITBoostData.ContainsKey("$sourceProperty")){
 
             } else {
                 $GivenName = $null
-                $GivenName = $($companyflexi.$nameField ?? $companyflexi.name) ?? "Unnamed $sourceProperty"
+                $GivenName = $($companyflexi.$nameField ?? $companyflexi.name)
                 if ($jsonSourceFields -contains $nameField.ToLowerInvariant()) {
                     $GivenName = SafeDecode $GivenName
                     $GivenName = $GivenName.value ?? $GivenName.text ?? $GivenName
                 }
 
                 $newflexirequest=@{
-                    Name=$GivenName
+                    Name=$($GivenName ?? "Unnamed $sourceProperty")
                     CompanyID = $matchedCompany.id
                     AssetLayoutId=$flexisLayout.id
                 }
@@ -128,6 +128,7 @@ if ($ITBoostData.ContainsKey("$sourceProperty")){
                         $rowVal = Get-CoercedDate -inputDate $rowVal
                     } elseif ($NumberFields -contains $huduField){
                         $rowVal = Get-CastIfNumeric -Value $rowVal
+                        $rowVal = $([int]([regex]::Match($rowVal, '\d+').Value))
                     }
 
 
@@ -172,7 +173,7 @@ if ($ITBoostData.ContainsKey("$sourceProperty")){
                 $newFlexi = $newflexi.asset ?? $newflexi
 
             } catch {
-                write-host "Error creating $FlexiLayoutName- $_"
+                write-host "Error creating $FlexiLayoutName from $sourceProperty- $_"
             }
         
         }
