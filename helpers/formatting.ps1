@@ -173,7 +173,7 @@ function New-GeneratedTemplateFromHuduLayout {
     $flexisMapLines   = @()
 
     foreach ($field in $HuduFields) {
-            $ReferenceLines += "# $($field | convertto-json -depth 99) # for reference"
+        $ReferenceLines += "# $($field | convertto-json -depth 99) # for reference"
     }
     foreach ($prop in $flexiProps) {
         $escapedProp  = $prop  -replace "'", "''"
@@ -183,7 +183,7 @@ function New-GeneratedTemplateFromHuduLayout {
 
 $TemplateOutput = @"
 # Hudu Destinatio Reference Section
-$($ReferenceLines -join ",`n")
+$($ReferenceLines -join "`n")
 
 `$flexisMap = @{
 $($flexisMapLines -join "`n")

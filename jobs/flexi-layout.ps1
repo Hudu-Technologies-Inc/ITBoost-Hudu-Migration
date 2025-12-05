@@ -12,14 +12,13 @@ $sourceProperty = Select-ObjectFromList -objects $flexiChoices -message "Which F
 $usingExistingLayout = $($(Select-ObjectFromList -objects @("Yes","No") -message "Do you already have a Hudu Asset Layout for $sourceProperty created?" -allowNull $false) -eq "Yes")
 $existingLayout = $null
 if ($true -eq $usingExistingLayout){
-    $existingLayout = Select-ObjectFromList -objects (Get-HuduAssetLayouts) -message "Select the existing layout for $FlexiLayoutName" -allowNull $false
+    $existingLayout = Select-ObjectFromList -objects (Get-HuduAssetLayouts) -message "Select the existing layout for $sourceProperty" -allowNull $false
     $existingLayout = $existingLayout.asset_layout ?? $existingLayout
-    $flexiLayoutName = $existingLayout.name
-    write-host "Mapping source property $sourceProperty to existing Hudu layout $($flexiLayoutName)"
+    $FlexiLayoutName = $existingLayout.name
+    write-host "Mapping source property $sourceProperty to existing Hudu layout $FlexiLayoutName"
 } else {
     $FlexiLayoutName = $sourceProperty
 }
-
 $completedFlexlayouts+=$FlexiLayoutName
 $flexiTemplate = "$project_workdir\mappings-$FlexiLayoutName.ps1"
 
@@ -49,20 +48,19 @@ $LocationLayout = Get-HuduAssetLayouts | Where-Object { ($(Get-NeedlePresentInHa
 
 if ($ITBoostData.ContainsKey("$FlexiLayoutName")){
     if ($usingExistingLayout -and $existingLayout) {
-        # Use the exact layout the user picked
         $flexisLayout = $existingLayout.asset_layout ?? $existingLayout
     } else {    
-        $flexisLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "$FlexiLayoutName" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "$FlexiLayoutName" -Haystack $_.name)) } | Select-Object -First 1
+        $flexisLayout = $allHuduLayouts | Where-Object { ... } | Select-Object -First 1
     }
     $flexisLayout = $flexisLayout.asset_layout ?? $flexisLayout
     if (-not $flexisLayout){
-        $flexisLayout=$(New-HuduAssetLayout -name "$FlexiLayoutName" -Fields $FlexiFields -Icon $($flexiIcon ?? "fas fa-users") -IconColor "#ffffff" -Color "#6136ff" -IncludePasswords $true -IncludePhotos $true -IncludeComments $true -IncludeFiles $true).asset_layout
+        $flexisLayout = (New-HuduAssetLayout -name "$FlexiLayoutName" -Fields $FlexiFields ...).asset_layout
         $flexisLayout = Get-HuduAssetLayouts -id $flexisLayout.id
     }
     $flexisFields = $flexisLayout.fields
     $SmooshFieldIsRichTExt = [bool]$(($flexisFields | Where-Object { $_.label -eq $($smooshToDestinationLabel) } | Select-Object -First 1).field_type -ieq "RichText")
+    $groupedflexis = $ITBoostData.$sourceProperty.CSVData | Group-Object { $_.organization } -AsHashTable -AsString
 
-    $groupedflexis = $ITBoostData.flexis.CSVData | Group-Object { $_.organization } -AsHashTable -AsString
     try {
         $allHuduflexis = Get-HuduAssets -AssetLayoutId $flexisLayout.id
     } catch {
