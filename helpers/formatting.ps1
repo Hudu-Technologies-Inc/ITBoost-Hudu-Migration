@@ -38,6 +38,131 @@ $LASTNAME_LABELS  = @('last name','lastname','surname','family name')
 $EMAIL_LABELS     = @('email','e-mail','primary email','work email')
 $PHONE_LABELS     = @('phone','phone number','primary phone','work phone','office phone','mobile','cell','cell phone')
 
+function SafeDecode {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [AllowNull()]
+        [object]$InputObject
+    )
+
+    if ($null -eq $InputObject) { return $null }
+
+    if ($InputObject -isnot [string]) {
+        return $InputObject
+    }
+
+    $s = $InputObject.Trim()
+    if ([string]::IsNullOrWhiteSpace($s)) { return $null }
+
+    try {
+        return $s | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        # Not valid JSON; just return the original string
+        return $InputObject
+    }
+}
+
+
+function Get-RelatedFromITBoostUUID {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [object]$inputVal,
+
+        [Parameter(Mandatory)]
+        [hashtable]$ITBoostData
+    )
+
+    if ($null -eq $inputVal) { return $null }
+
+    $decoded = SafeDecode -InputObject $inputVal
+
+    $uuid = $null
+
+    if ($decoded -is [string]) {
+        # Could be a plain UUID string already
+        $uuid = [string]$decoded
+    } else {
+        # PSCustomObject or similar – check known properties
+        if ($decoded.PSObject.Properties.Match('uuid')) {
+            $uuid = [string]$decoded.uuid
+        } elseif ($decoded.PSObject.Properties.Match('id')) {
+            $uuid = [string]$decoded.id
+        } else {
+            # Fallback to string representation if needed
+            $uuid = [string]$decoded
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($uuid)) {
+        return $null
+    }
+
+    foreach ($key in $ITBoostData.Keys |
+                 Where-Object { $ITBoostData[$_].ContainsKey('CSVData') }) {
+
+        $matchedItem = $ITBoostData[$key].CSVData |
+            Where-Object { [string]$_.id -eq $uuid } |
+            Select-Object -First 1
+
+        if ($matchedItem) {
+            return $matchedItem
+        }
+    }
+
+    return $null
+}
+
+
+function Get-CSVProperties {
+    param ([array]$csvRows)
+    return $csvRows |
+        ForEach-Object { $_.PSObject.Properties.Name } |
+        Sort-Object -Unique
+}
+function New-GeneratedTemplateFromFlexiHeaders {
+    param ([array]$ITboostdata, [string]$FlexiLayoutName, [string]$outFile)
+    $flexiProps = Get-CSVProperties $ITboostdata.$FlexiLayoutName.CSVData
+
+    $flexiFieldsLines = @()
+    $flexisMapLines   = @()
+
+    $idx = 0
+
+    foreach ($prop in $flexiProps | where-object {-not @("id", "CsvRow","Location","organization","resource_id","resource_type") -contains $_}) {
+        $idx++
+        $label = ($prop -replace '_', ' ')
+        $escapedLabel = $label -replace "'", "''"
+        $escapedProp  = $prop  -replace "'", "''"
+
+        $flexiFieldsLines +=
+            "    @{label = '$escapedLabel'; field_type = 'Text'; show_in_list = 'false'; position = $idx; required = 'false'; hint = '$escapedProp from script'}"
+
+        $flexisMapLines +=
+            "    '$($escapedProp -replace " ","_")' = '$escapedLabel'"
+    }
+
+$TemplateOutput = @"
+`$flexiFields = @(
+$($flexiFieldsLines -join ",`n")
+)
+
+`$flexisMap = @{
+$($flexisMapLines -join "`n")
+}
+"@ + @'
+# smoosh source label items to destination smooshable
+$smooshLabels = @()
+$smooshToDestinationLabel = $null
+$jsonSourceFields = @()
+'@
+    $TemplateOutput | Set-Content -Path $outFile -Encoding UTF8 -Force
+
+    return $TemplateOutput
+}
+
+
 function Get-HuduLayoutLike {
   param ([array]$LabelSet)
 

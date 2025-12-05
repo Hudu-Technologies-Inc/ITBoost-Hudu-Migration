@@ -1,12 +1,18 @@
+# reset all possible user-mapping inputs
+$smooshLabels = @(); $smooshToDestinationLabel = $null; $flexisMap = @{}; $flexiFields = @(); $jsonSourceFields = @()
 $standardlayouts = @('locations','configurations','contacts','domains','organizations','passwords')
-$completedFlexlayouts = $completedFlexlayouts ?? @()
+
+# Choose next layout to target, a template will be generated for you to fill out mappings
+# $completedFlexlayouts = $completedFlexlayouts ?? @()
+$completedFlexlayouts = @()
 $flexiChoices = $ITBoostData.Keys | Where-Object { $_.ToLower() -notin $standardlayouts -and $_.ToLower() -notin  $completedFlexlayouts}
 if (-not $flexiChoices -or $flexiChoices.count -eq 0){exit 0}
-
 $FlexiLayoutName = Select-ObjectFromList -objects $flexiChoices -message "Which Flexi-Layout to process next?" -allowNull $false
 $completedFlexlayouts+=$FlexiLayoutName
 $flexiTemplate = "$project_workdir\mappings-$FlexiLayoutName.ps1"
-Copy-Item "$project_workdir\jobs\flexi-map.ps1" $flexiTemplate -Force
+New-GeneratedTemplateFromFlexiHeaders -ITboostdata $ITBoostData -FlexiLayoutName $FlexiLayoutName -outFile $flexiTemplate
+
+# Copy-Item "$project_workdir\jobs\flexi-map.ps1" $flexiTemplate -Force
 Read-Host "Please fill out mappings in $flexiTemplate and ensure its completion. then, press enter."
 $successRead = $false
 while ($true) {
@@ -21,7 +27,7 @@ while ($true) {
 
 # load companies index if available
 $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
-$LocationLayout = Get-HuduLayoutLike -labelSet @('location','branch','office location','site','building','sucursal','standort','filiale','vestiging','sede')
+$LocationLayout = Get-HuduAssetLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "location" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "locations" -Haystack $_.name)) } | Select-Object -First 1
 
 if ($ITBoostData.ContainsKey("$FlexiLayoutName")){
     $flexisLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "$FlexiLayoutName" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "$FlexiLayoutName" -Haystack $_.name)) } | Select-Object -First 1
@@ -30,33 +36,21 @@ if ($ITBoostData.ContainsKey("$FlexiLayoutName")){
         $flexisLayout = Get-HuduAssetLayouts -id $flexisLayout.id
     }
     $flexisFields = $flexisLayout.fields
+    $SmooshFieldIsRichTExt = [bool]$(($flexisFields | Where-Object { $_.label -eq $($smooshToDestinationLabel) } | Select-Object -First 1).field_type -ieq "RichText")
+
     $groupedflexis = $ITBoostData.flexis.CSVData | Group-Object { $_.organization } -AsHashTable -AsString
     try {
         $allHuduflexis = Get-HuduAssets -AssetLayoutId $flexisLayout.id
     } catch {
         $allHuduflexis=@()
     }
-   $flexiIndex    = if ($allHuduflexis.count -gt 0) {Build-HuduflexiIndex -flexis $allHuduflexis} else {@{    ByName  = @{}
-    ByEmail = @{}
-    ByPhone = @{}}}
     foreach ($company in $groupedflexis.Keys) {
         write-host "starting $company"
         $flexisForCompany = $groupedflexis[$company]
         $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
         if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { continue }
         foreach ($companyflexi in $flexisForCompany){
-            $matchedflexi = Find-Huduflexi `
-            -CompanyId  $matchedCompany.id `
-            -FirstName  $companyflexi.first_name `
-            -LastName   $companyflexi.last_name `
-            -Email      $companyflexi.primary_email `
-            -Phone      $companyflexi.primary_phone `
-            -Index      $flexiIndex
-
-            # Optional fallback to API search by name if still null:
-            if (-not $matchedflexi -and ($companyflexi.first_name -or $companyflexi.last_name)) {
-            $qName = ("{0} {1}" -f $companyflexi.first_name, $companyflexi.last_name).Trim()
-            $matchedflexi = Get-HuduAssets -AssetLayoutId $flexisLayout.id -CompanyId $matchedCompany.id -Name $qName |
+            $matchedflexi = Get-HuduAssets -AssetLayoutId $flexisLayout.id -CompanyId $matchedCompany.id -Name $companyFlexi.name |
                                 Select-Object -First 1
             }
             if ($matchedflexi){
@@ -66,16 +60,6 @@ if ($ITBoostData.ContainsKey("$FlexiLayoutName")){
                     # ensure the array exists once
                     if (-not $ITBoostData.flexis.ContainsKey('matches')) { $ITBoostData.flexis['matches'] = @() }
 
-                    $ITBoostData.flexis['matches'] += @{
-                        CompanyName      = $companyflexi.organization
-                        CsvRow           = $companyflexi.CsvRow
-                        ITBID            = $companyflexi.id
-                        Name             = $humanName
-                        HuduID           = $matchedflexi.id
-                        HuduObject       = $matchedflexi
-                        HuduCompanyId    = $matchedflexi.company_id
-                        PasswordsToCreate= ($companyflexi.password ?? @())
-                    }
                     continue
 
             } else {
@@ -84,12 +68,12 @@ if ($ITBoostData.ContainsKey("$FlexiLayoutName")){
                     CompanyID = $matchedCompany.id
                     AssetLayoutId=$flexisLayout.id
                 }
+                $fields = $()
                 if ($false -eq $UseSimpleMap){
-                    $newflexirequest["Fields"]=Build-FieldsFromRow -row $companyflexi -layoutFields $flexisFields -companyId $matchedCompany.id
+                    $fields=Build-FieldsFromRow -row $companyflexi -layoutFields $flexisFields -companyId $matchedCompany.id
                 
                 } else {
-                    $fields = @()
-                    foreach ($key in $flexisMap.Keys | where-object {$_ -ne "location"}) {
+                    foreach ($key in $flexisMap.Keys | where-object {$_ -ne "location" -and $smooshLabels -notcontains $_}) {
                         # pull value from CSV row
                         $rowVal = $companyflexi.$key ?? $null
                         if ($null -eq $rowVal) { continue }
@@ -98,47 +82,53 @@ if ($ITBoostData.ContainsKey("$FlexiLayoutName")){
 
                         $huduField = $flexisMap[$key]
                         $fields+=@{ $($huduField) = $rowVal.Trim() }
-                        }
-
-                        if (-not $([string]::IsNullOrWhiteSpace($companyflexi.location))){
-                                $matchedlocation = Get-HuduAssets -AssetLayoutId ($LocationLayout.id ?? 2) -CompanyId $matchedCompany.id |
-                                                Where-Object { test-equiv -A $_.name -B $companyflexi.location } |
-                                                Select-Object -First 1
-                                               if ($matchedlocation){
-                                $fields+=@{"Location" = "[$($matchedlocation.id)]"}
-                            }
-                        }
-                        $newflexirequest["Fields"]=$fields
-
                     }
 
-
-
+                    if (-not $([string]::IsNullOrWhiteSpace($companyflexi.location))){
+                        $locationDeserialized= $($companyflexi.location | ConvertFrom-Json -depth 99 -ErrorAction SilentlyContinue) ?? $companyflexi.location
+                        $locationDeserialized = $locationDeserialized.value ?? $locationDeserialized.text ?? $locationDeserialized
+                        if (-not $([string]::IsNullOrWhiteSpace($locationDeserialized))){
+                        $matchedlocation = Get-HuduAssets -AssetLayoutId ($LocationLayout.id ?? 2) -CompanyId $matchedCompany.id |
+                                            Where-Object { test-equiv -A $_.name -B $locationDeserialized } |
+                                            Select-Object -First 1
+                                            if ($matchedlocation){
+                            $fields+=@{"Location" = "[$($matchedlocation.id)]"}
+                            }
+                        }
+                    }
+                    $SmooshedNotes = @()
+                    foreach ($smooshLabel in $smooshLabels){
+                        $rowVal = $companyflexi.$smooshLabel ?? $null
+                        $rowVal = [string]$rowVal
+                        if ([string]::IsNullOrWhiteSpace($rowVal)) { continue }
+                        if ($SmooshFieldIsRichTExt){
+                            $SmooshedNotes+= "$($smooshLabel)-<br>$($rowVal.Trim())"
+                        } else {
+                            $SmooshedNotes+= "$($smooshLabel)- $($rowVal.Trim())"
+                        }
+                    }
+                    if ($SmooshedNotes.Count -gt 0){
+                        write-host "$($SmooshedNotes.Count) fields smooshed into $smooshToDestinationLabel for $($companyflexi.name) as $(if ($true -eq $SmooshFieldIsRichTExt) {"RichText"} else {"Text"})"
+                        $smooshedContent = if ($true -eq $SmooshFieldIsRichTExt) {$SmooshedNotes -join "<br><hr><br>"} else { $SmooshedNotes -join "`n`n" }
+                        $fields+=@{ $smooshToDestinationLabel = "$smooshedContent".Trim() }
                 }
+                
+            
+                $newflexirequest["Fields"]=$fields
 
 
                 try {
                     $newflexi = New-Huduasset @newflexirequest
+                    $newFlexi = $newflexi.asset ?? $newflexi
+
                 } catch {
                     write-host "Error creating location: $_"
                 }
                 if ($newflexi){
-                    $ITBoostData.flexis["matches"]+=@{
-                        CompanyName=$companyflexi.organization
-                        CsvRow=$companyflexi.CsvRow
-                        ITBID=$companyflexi.id
-                        Name=$companyflexi.name
-                        HuduID=$newflexi.id
-                        HuduObject=$newflexi
-                        HuduCompanyId=$newflexi.company_id
-                        PasswordsToCreate=$($companyflexi.password ?? @())
-                    }            
+   
                 }
             }
         }
     }
- else {write-host "no flexis in CSV! skipping."} 
 
-foreach ($dupeflexi in $(Get-HuduAssets -AssetLayoutId $flexisLayout.id | Group-Object { '{0}|{1}' -f $_.company_id, (($_.'name' -as [string]).Trim() -replace '\s+',' ').ToLower() } | Where-Object Count -gt 1 | ForEach-Object { $_.Group | Sort-Object id | Select-Object -Skip 1 } )){
-    if ($dupeflexi.archived -eq $true){continue}
-    Remove-HuduAsset -id $dupeflexi.id -CompanyId $dupeflexi.company_id -Confirm:$false}
+ else {write-host "no flexis in CSV! skipping."} 

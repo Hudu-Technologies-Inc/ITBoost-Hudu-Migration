@@ -1,4 +1,4 @@
-$CSVFiles= Get-ChildItem -Path $ITBoostExportPath -Recurse -File -Filter "*.csv"
+$CSVFiles= Get-ChildItem -Path $ITBoostExportPath -Recurse -depth 2 -File -Filter "*.csv"
 foreach ($f in $CSVFiles){
     try {
         $csvData=$(Import-Csv $f.FullName | Select-Object @{Name='CsvRow'; Expression={ $i++ }}, *)
