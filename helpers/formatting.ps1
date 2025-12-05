@@ -125,6 +125,49 @@ $PHONE_LABELS     = @('phone','phone number','primary phone','work phone','offic
     
     }
 
+function Normalize-HuduWebsiteUrl {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Url
+    )
+
+    $Url = $Url.Trim()
+    if ([string]::IsNullOrWhiteSpace($Url)) { return $null }
+
+    # 1) UNC paths: \\server\share\path or //server/share/path
+    if ($Url -match '^(\\\\|//)(?<host>[^\\/]+)(?<rest>.*)$') {
+        $host = $matches.host
+        $rest = $matches.rest -replace '\\','/'
+        $rest = $rest.Trim()
+
+        if ($rest -and -not $rest.StartsWith('/')) {
+            $rest = '/' + $rest
+        }
+
+        $normalized = "https://$host$rest"
+        return $normalized.TrimEnd('/')
+    }
+
+    # 2) file:// URLs (local or UNC-ish)
+    if ($Url -match '^file://(?<rest>.+)$') {
+        $rest = $matches.rest.TrimStart('\','/')
+        $rest = $rest -replace '\\','/'
+        $normalized = "https://$rest"
+        return $normalized.TrimEnd('/')
+    }
+
+    # 3) Any other scheme: http://, ftp://, whatever://
+    if ($Url -match '^(?<scheme>[a-z][a-z0-9+\-.]*://)(?<rest>.+)$') {
+        $rest = $matches.rest.TrimStart('/')
+        $normalized = "https://$rest"
+        return $normalized.TrimEnd('/')
+    }
+
+    # 4) No scheme at all → assume https://
+    return ("https://$Url").TrimEnd('/','\')
+}
+
+
 function Get-CastIfNumeric {
     param(
         [Parameter(Mandatory)]

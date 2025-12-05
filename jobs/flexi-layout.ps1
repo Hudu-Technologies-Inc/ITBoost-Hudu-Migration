@@ -77,6 +77,7 @@ if ($ITBoostData.ContainsKey("$sourceProperty")){
     $flexisFields = $flexisLayout.fields
     $dateFields = $flexisFields | Where-Object { $_.field_type -eq "Date" } | Select-Object -ExpandProperty label
     $NumberFields = $flexisFields | Where-Object { $_.field_type -eq "Number" } | Select-Object -ExpandProperty label
+    $WebsiteFields = $flexisFields | Where-Object { $_.field_type -eq "Website" } | Select-Object -ExpandProperty label
 
     $SmooshFieldIsRichTExt = [bool]$(($flexisFields | Where-Object { $_.label -eq $($smooshToDestinationLabel) } | Select-Object -First 1).field_type -ieq "RichText") ?? $true
     Write-Host "Smooshable dest is $(if ($true -eq $SmooshFieldIsRichTExt) {"RichText"} else {"Text"})"
@@ -124,11 +125,13 @@ if ($ITBoostData.ContainsKey("$sourceProperty")){
                     if ([string]::IsNullOrWhiteSpace($rowVal)) { continue }
 
                     $huduField = $flexisMap[$key]
-                    if ($dateFields -contains $huduField){
+                    if ($dateFields -contains "$huduField".ToLowerInvariant()){
                         $rowVal = Get-CoercedDate -inputDate $rowVal
-                    } elseif ($NumberFields -contains $huduField){
+                    } elseif ($NumberFields -contains "$huduField".ToLowerInvariant()){
                         $rowVal = Get-CastIfNumeric -Value $rowVal
                         $rowVal = $([int]([regex]::Match($rowVal, '\d+').Value))
+                    } elseif ($WebsiteFields -contains "$huduField".ToLowerInvariant()){
+                        $rowVal = Normalize-HuduWebsiteUrl -Url $rowVal
                     }
 
 
@@ -162,6 +165,9 @@ if ($ITBoostData.ContainsKey("$sourceProperty")){
                     write-host "$($SmooshedNotes.Count) fields smooshed into $smooshToDestinationLabel for $GivenName as $(if ($true -eq $SmooshFieldIsRichTExt) {"RichText"} else {"Text"})"
                     $smooshedContent = if ($true -eq $SmooshFieldIsRichTExt) {$SmooshedNotes -join "<br><hr><br>"} else { $SmooshedNotes -join "`n`n" }
                     $fields+=@{ $smooshToDestinationLabel = "$smooshedContent".Trim() }
+            }
+            foreach ($constant in $contstants){
+                $fields+=$constant
             }
             
         
