@@ -24,10 +24,10 @@ $flexiTemplate = "$project_workdir\mappings-$FlexiLayoutName.ps1"
 
 if ($true -eq $usingExistingLayout){
     write-host "generating mapping template for existing layout $($existingLayout.name)"
-    New-GeneratedTemplateFromHuduLayout -HuduLayout $existingLayout -ITboostdata $ITBoostData -sourceProperty $sourceProperty -outFile $flexiTemplate
+    New-GeneratedTemplateFromHuduLayout -HuduLayout $existingLayout -ITboostdata $ITBoostData -sourceProperty $sourceProperty -outFile $(Get-SafeFilename $flexiTemplate)
 } else {
     write-host "generating mapping template for New or Newly-Created layout $($FlexiLayoutName)"
-    New-GeneratedTemplateFromFlexiHeaders -ITboostdata $ITBoostData -FlexiLayoutName $FlexiLayoutName -outFile $flexiTemplate
+    New-GeneratedTemplateFromFlexiHeaders -ITboostdata $ITBoostData -FlexiLayoutName $FlexiLayoutName -outFile $(Get-SafeFilename $flexiTemplate)
 }
 # Copy-Item "$project_workdir\jobs\flexi-map.ps1" $flexiTemplate -Force
 Read-Host "Please fill out mappings in $flexiTemplate and ensure its completion. then, press enter."

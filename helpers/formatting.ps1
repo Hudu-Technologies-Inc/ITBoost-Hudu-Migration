@@ -38,6 +38,29 @@ $LASTNAME_LABELS  = @('last name','lastname','surname','family name')
 $EMAIL_LABELS     = @('email','e-mail','primary email','work email')
 $PHONE_LABELS     = @('phone','phone number','primary phone','work phone','office phone','mobile','cell','cell phone')
 
+function Get-SafeFilename {
+    param([string]$Name,
+        [int]$MaxLength=25
+    )
+
+    # If there's a '?', take only the part before it
+    $BaseName = $Name -split '\?' | Select-Object -First 1
+
+    # Extract extension (including the dot), if present
+    $Extension = [System.IO.Path]::GetExtension($BaseName)
+    $NameWithoutExt = [System.IO.Path]::GetFileNameWithoutExtension($BaseName)
+
+    # Sanitize name and extension
+    $SafeName = $NameWithoutExt -replace '[\\\/:*?"<>|]', '_'
+    $SafeExt = $Extension -replace '[\\\/:*?"<>|]', '_'
+
+    # Truncate base name to 25 chars
+    if ($SafeName.Length -gt $MaxLength) {
+        $SafeName = $SafeName.Substring(0, $MaxLength)
+    }
+
+    return "$SafeName$SafeExt"
+}
 function SafeDecode {
     [CmdletBinding()]
     param (
@@ -183,7 +206,9 @@ function New-GeneratedTemplateFromHuduLayout {
 
 $TemplateOutput = @"
 # Hudu Destinatio Reference Section
+<#
 $($ReferenceLines -join "`n")
+#>
 
 `$flexisMap = @{
 $($flexisMapLines -join "`n")
