@@ -73,7 +73,7 @@ if ($ITBoostData.ContainsKey("configurations")){
     foreach ($companyConfig in $configsForCompany) {
         # 4a) find existing
         $matchedConfig = $allHuduConfigs | Where-Object {
-        $_.company_id -eq $matchedCompany.id -and (Test-NameEquivalent -A $_.name -B $companyConfig.name)
+        $_.company_id -eq $matchedCompany.id -and (test-equiv -A $_.name -B $companyConfig.name)
         } | Select-Object -First 1
 
         if (-not $matchedConfig) {
@@ -102,19 +102,19 @@ if ($ITBoostData.ContainsKey("configurations")){
         # 4d) link location (only if field exists as AssetTag)
         if (-not [string]::IsNullOrWhiteSpace($companyConfig.location)) {
         $matchedLocation = Get-HuduAssets -AssetLayoutId ($LocationLayout?.id ?? 2) -CompanyId $matchedCompany.id |
-                            Where-Object { Test-NameEquivalent -A $_.name -B $companyConfig.location } |
+                            Where-Object { test-equiv -A $_.name -B $companyConfig.location } |
                             Select-Object -First 1
         if ($matchedLocation) { $fields += @{ 'location' = "[$($matchedLocation.id)]" } }
         }
         if (-not [string]::IsNullOrWhiteSpace($companyConfig.purchased_by)) {
         $matchedpurchaser = Get-HuduAssets -AssetLayoutId ($contactslayout?.id ?? 2) -CompanyId $matchedCompany.id |
-                            Where-Object { Test-NameEquivalent -A $_.name -B $companyConfig.purchased_by } |
+                            Where-Object { test-equiv -A $_.name -B $companyConfig.purchased_by } |
                             Select-Object -First 1
         if ($matchedLocation) { $fields += @{ 'purchased by' = "[$($matchedpurchaser.id)]" } }
         }        
         if (-not [string]::IsNullOrWhiteSpace($companyConfig.installed_by)) {
         $matchedinstaller = Get-HuduAssets -AssetLayoutId ($contactslayout?.id ?? 2) -CompanyId $matchedCompany.id |
-                            Where-Object { Test-NameEquivalent -A $_.name -B $companyConfig.installed_by } |
+                            Where-Object { test-equiv -A $_.name -B $companyConfig.installed_by } |
                             Select-Object -First 1
         if ($matchedLocation) { $fields += @{ 'installed by' = "[$($matchedinstaller.id)]" } }
         }                

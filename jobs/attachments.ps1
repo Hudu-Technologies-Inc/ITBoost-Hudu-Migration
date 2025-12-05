@@ -52,7 +52,7 @@ if ($ITBoostData.ContainsKey("documents")){
             $matchedDocument = $null
             $matchedDocument = $allHududocuments | Where-Object {
                 $_.company_id -eq $matchedCompany.id -and
-                     $($(Test-NameEquivalent -A $_.name -B $companydocument.name) -or 
+                     $($(test-equiv -A $_.name -B $companydocument.name) -or 
                      $([double]$(Get-SimilaritySafe -A $_.name -B $companydocument.name) -ge 0.90))} | Select-Object -first 1
             $matchedDocument = $matchedDocument ?? $($(Get-HuduArticles -CompanyId $matchedCompany.id -name $companydocument.name) | Select-Object -first 1)
             
@@ -158,7 +158,7 @@ if ($ITBoostData.ContainsKey("documents")){
                 $existingRelated = Get-Huduuploads | where-object {$_.uploadable_type -eq "Article" -and [string]$_.uploadable_id -eq [string]$newdocumentrequest["Id"]}
                 # IMAGES
                 foreach ($imageUpload in $imagesNeeded) {
-                    $existingupload = $existingRelated | where-object {Test-NameEquivalent -A $_.name -B "$([IO.Path]::GetFileName(($imageUpload.File.FullName ?? $imageUpload.File)))".Trim()} | select-object -first 1
+                    $existingupload = $existingRelated | where-object {test-equiv -A $_.name -B "$([IO.Path]::GetFileName(($imageUpload.File.FullName ?? $imageUpload.File)))".Trim()} | select-object -first 1
                     if ($existingupload -and $existingupload.url){
                         Add-REplacement "$([IO.Path]::GetFileName(($up.File.FullName ?? $up.File)))" $existingupload.url
                         write-host "Existing image $($existingupload.url) for $($companydocument.name)"
@@ -181,7 +181,7 @@ if ($ITBoostData.ContainsKey("documents")){
 
                 # NON-IMAGE UPLOADS
                 foreach ($up in $uploadsNeeded) {
-                    $existingupload = $existingRelated | where-object {Test-NameEquivalent -A $_.name -B "$([IO.Path]::GetFileName(($up.File.FullName ?? $up.File)))".Trim()} | select-object -first 1
+                    $existingupload = $existingRelated | where-object {test-equiv -A $_.name -B "$([IO.Path]::GetFileName(($up.File.FullName ?? $up.File)))".Trim()} | select-object -first 1
                     if ($existingupload -and $existingupload.url){
                         Add-REplacement "$([IO.Path]::GetFileName(($up.File.FullName ?? $up.File)))" $existingupload.url
                         write-host "Existing upload $($existingupload.url) for $($companydocument.name)"

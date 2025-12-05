@@ -31,9 +31,9 @@ if ($ITBoostData.ContainsKey("passwords")) {
 
     foreach ($companyPass in $passwords[$company]) {
       # try to find an existing password by name
-      $matchedPassword = $companyPasswords | Where-Object { Test-NameEquivalent -A $_.name -B $companyPass.name } | Select-Object -First 1
-      $matchedAsset    = $companyAssets   | Where-Object { Test-NameEquivalent -A $_.name -B $companyPass.name } | Select-Object -First 1
-      $matchedWebsite  = $companyWebsites | Where-Object { Test-NameEquivalent -A $_.name -B ($companyPass.server ?? $companyPass.name) } | Select-Object -First 1
+      $matchedPassword = $companyPasswords | Where-Object { test-equiv -A $_.name -B $companyPass.name } | Select-Object -First 1
+      $matchedAsset    = $companyAssets   | Where-Object { test-equiv -A $_.name -B $companyPass.name } | Select-Object -First 1
+      $matchedWebsite  = $companyWebsites | Where-Object { test-equiv -A $_.name -B ($companyPass.server ?? $companyPass.name) } | Select-Object -First 1
 
       $NewPasswordRequest = @{
         Name      = "$($companyPass.name)".Trim()

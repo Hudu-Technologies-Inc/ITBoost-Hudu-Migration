@@ -58,7 +58,7 @@ if ($ITBoostData.ContainsKey("locations")){
         foreach ($companyLocation in $locationsForCompany){
 
             if ($locationsSeen -contains $companyLocation.name){continue} else {$locationsSeen+="$($companyLocation.name)"}
-            $matchedlocation = $allHuduLocations | where-object {$_.company_id -eq $matchedCompany.id -and  $($(Test-NameEquivalent -A $_.name -B $companyLocation.name) -or $(Test-NameEquivalent -A $companyLocation.address_1 -B $($_.fields | where-object {$_.label -ilike "address"} | select-object -first 1).value))} | select-object -first 1
+            $matchedlocation = $allHuduLocations | where-object {$_.company_id -eq $matchedCompany.id -and  $($(test-equiv -A $_.name -B $companyLocation.name) -or $(test-equiv -A $companyLocation.address_1 -B $($_.fields | where-object {$_.label -ilike "address"} | select-object -first 1).value))} | select-object -first 1
             if ($matchedLocation){
                 Write-Host "Matched $($companyLocation.name) to $($matchedlocation.name) for $($matchedCompany.name)"
                 $ITBoostData.locations["matches"]+=@{

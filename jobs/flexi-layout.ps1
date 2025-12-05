@@ -102,7 +102,7 @@ if ($ITBoostData.ContainsKey("$FlexiLayoutName")){
 
                         if (-not $([string]::IsNullOrWhiteSpace($companyflexi.location))){
                                 $matchedlocation = Get-HuduAssets -AssetLayoutId ($LocationLayout.id ?? 2) -CompanyId $matchedCompany.id |
-                                                Where-Object { Test-NameEquivalent -A $_.name -B $companyflexi.location } |
+                                                Where-Object { test-equiv -A $_.name -B $companyflexi.location } |
                                                 Select-Object -First 1
                                                if ($matchedlocation){
                                 $fields+=@{"Location" = "[$($matchedlocation.id)]"}

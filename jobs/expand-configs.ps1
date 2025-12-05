@@ -43,7 +43,7 @@ function Build-RowMergedMap {
       $candidate = $r.$csvKey
       if ($null -eq $candidate) {
         # try a loose fallback: search by case-insensitive property name
-        $prop = ($r.PSObject.Properties | Where-Object { Test-NameEquivalent -A $_.Name -B $csvKey }).Value
+        $prop = ($r.PSObject.Properties | Where-Object { test-equiv -A $_.Name -B $csvKey }).Value
         $candidate = $prop
       }
 
@@ -147,7 +147,7 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
             $individual = $rows[0]
 
             $matchedConfig = $allHuduConfigs |
-                Where-Object { $_.company_id -eq $matchedCompany.id -and (Test-NameEquivalent -A $_.name -B $individual.name) } |
+                Where-Object { $_.company_id -eq $matchedCompany.id -and (test-equiv -A $_.name -B $individual.name) } |
                 Select-Object -First 1
             $matchedConfig = $matchedConfig ?? (Get-HuduAssets -AssetLayoutId $configsLayout.id -CompanyId $matchedCompany.id -Name $individual.name | Select-Object -First 1)
 
@@ -222,7 +222,7 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
             if (@("ALL","RichText-Field") -contains $ConfigExpansionMethod){
                 $fieldsRequest=@()
                 foreach ($f in $configsLayout.fields | where-object {$_.label -ne $ConfigsRichTextOverviewField}){
-                    $value = $($matchedconfig.fields | where-object {Test-NameEquivalent -A $_.label -B $f.label} | Select-Object -First 1)?.value ?? $null
+                    $value = $($matchedconfig.fields | where-object {test-equiv -A $_.label -B $f.label} | Select-Object -First 1)?.value ?? $null
                     $value = $value ?? $(Build-RowMergedMap -ConfigsMap $configsMap -Rows $rows)["$($f.label)"]
                     if ($null -ne $value){
                     

@@ -56,23 +56,21 @@ function Get-HuduCompanyFromName {
     param (
         [Parameter(Mandatory = $true)]
         [string]$CompanyName,
-
         [array]$HuduCompanies,
-
         [bool]$includenicknames = $false,
         [array]$existingIndex = $null
     )
     if ([string]::IsNullOrWhiteSpace($CompanyName)) { return $null }
     $matchedCompany = $null
-    if ($existingIndex -ne $null){
+    if ($existingIndex -ne $null -and $existingIndex.count -gt 0){
         $matchedCompany = $matchedCompany ?? $existingIndex | where-object {
             ($_.CompanyName -ieq $CompanyName) -or
-            [bool]$(Test-NameEquivalent -A $_.CompanyName -B $CompanyName) } | Select-Object -First 1
+            [bool]$(test-equiv -A $_.CompanyName -B $CompanyName) } | Select-Object -First 1
         if ($includenicknames){
             $matchedCompany = $matchedCompany ?? $existingIndex | where-object {
                 (-not [string]::IsNullOrWhiteSpace($_.HuduObject.nickname)) -and (
                     ($_.HuduObject.nickname -ieq $CompanyName) -or
-                    [bool]$(Test-NameEquivalent -A $_.HuduObject.nickname -B $CompanyName))
+                    [bool]$(test-equiv -A $_.HuduObject.nickname -B $CompanyName))
             } | Select-Object -First 1
         }
     }
@@ -80,17 +78,17 @@ function Get-HuduCompanyFromName {
 
     $matchedCompany = $matchedCompany ?? $HuduCompanies | where-object {
             ($_.name -ieq $CompanyName) -or
-            [bool]$(Test-NameEquivalent -A $_.name -B $CompanyName)`
+            [bool]$(test-equiv -A $_.name -B $CompanyName)`
         } | Select-Object -First 1
     $matchedCompany = $matchedCompany ?? $(Get-HuduCompanies -Name $CompanyName | select-object -first 1)
-    $matchedCompany = $matchedCompany ?? (get-huducompanies | where-object {[bool]$(Test-NameEquivalent -A $_.name -B $CompanyName)} | select-object -first 1)
+    $matchedCompany = $matchedCompany ?? (get-huducompanies | where-object {[bool]$(test-equiv -A $_.name -B $CompanyName)} | select-object -first 1)
     
     if ($includenicknames){
         $matchedCompany = $HuduCompanies | where-object {
                 ($_.nickname -ieq $CompanyName) -or
-                [bool]$(Test-NameEquivalent -A $_.nickname -B $CompanyName)`
+                [bool]$(test-equiv -A $_.nickname -B $CompanyName)`
             } | Select-Object -First 1
-        $matchedCompany = $matchedCompany ?? (get-huducompanies | where-object {[bool]$(Test-NameEquivalent -A $_.name -B $CompanyName)} | select-object -first 1)
+        $matchedCompany = $matchedCompany ?? (get-huducompanies | where-object {[bool]$(test-equiv -A $_.name -B $CompanyName)} | select-object -first 1)
     }
     return $matchedCompany
 }
@@ -107,11 +105,11 @@ function Get-HuduAssetFromName {
     $matchedAsset = $null
     $matchedAsset = $Assets | where-object {
             ($_.name -ieq $Name) -or
-            [bool]$(Test-NameEquivalent -A $_.name -B $Name)`
+            [bool]$(test-equiv -A $_.name -B $Name)`
         } | Select-Object -First 1
     $matchedAsset = $matchedAsset ?? 
         $(Get-HuduAssets -AssetLayoutId $AssetLayoutId -Name $CompanyName) ?? 
-         (get-huduassets -AssetLayoutId $AssetLayoutId | where-object {[bool]$(Test-NameEquivalent -A $_.name -B $Name)} | select-object -first 1)
+         (get-huduassets -AssetLayoutId $AssetLayoutId | where-object {[bool]$(test-equiv -A $_.name -B $Name)} | select-object -first 1)
     return $matchedCompany
 }
 
@@ -822,7 +820,7 @@ function Get-NormalizedVariants {
     return $variants
 }
 
-function Test-NameEquivalent {
+function test-equiv {
     param([string]$A, [string]$B)
 
     $va = Get-NormalizedVariants $A
@@ -1040,7 +1038,7 @@ function Resolve-LocationForCompany {
 
   $companyLocs = $AllHuduLocations | Where-Object { $_.company_id -eq $CompanyId }
   foreach ($cv in $candVals) {
-    $hit = $companyLocs | Where-Object { Test-NameEquivalent -A $_.name -B $cv } | Select-Object -First 1
+    $hit = $companyLocs | Where-Object { test-equiv -A $_.name -B $cv } | Select-Object -First 1
     if ($hit) { return $hit }
   }
   return $null

@@ -64,7 +64,7 @@ $SmooshPropsTo = "Notes"
 # Notes
 # IP Address of Primary Computer
 
-$LocationLayout = Get-HuduLayoutLike -labelSet @('location','branch','office location','site','building','sucursal','standort','filiale','vestiging','sede')
+$LocationLayout = Get-HuduAssetLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "location" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "locations" -Haystack $_.name)) } | Select-Object -First 1
 
 function Build-HuduContactIndex {
   [CmdletBinding()]
@@ -207,7 +207,7 @@ if ($ITBoostData.ContainsKey("contacts")){
 
                     if (-not $([string]::IsNullOrWhiteSpace($companyContact.location))){
                             $matchedlocation = Get-HuduAssets -AssetLayoutId ($LocationLayout.id ?? 2) -CompanyId $matchedCompany.id |
-                                            Where-Object { Test-NameEquivalent -A $_.name -B $companyContact.location } |
+                                            Where-Object { test-equiv -A $_.name -B $companyContact.location } |
                                             Select-Object -First 1
                                         if ($matchedlocation){
                             $fields+=@{"Location" = "[$($matchedlocation.id)]"}
