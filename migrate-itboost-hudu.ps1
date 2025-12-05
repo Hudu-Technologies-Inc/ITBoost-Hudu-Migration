@@ -37,8 +37,8 @@ $ITBoostData=@{
 
 
 foreach ($job in @(
-"read-csvs",
-"get-hududata"
+"read-csvs"
+# "get-hududata"
 # "companies",
 # "locations"
 # "contacts",

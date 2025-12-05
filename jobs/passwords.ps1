@@ -19,10 +19,11 @@ if ($ITBoostData.ContainsKey("passwords")) {
     $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
     Write-Host "Matched to company $($matchedCompany.name)"
     if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { 
-            $createdcompany = New-HuduCompany -Name "$($company)".Trim()
-            $matchedcompany = Get-HuduCompanies -id $createdcompany.idtools
-            $matchedCompany = $matchedCompany.company ?? $matchedCompany
-         write-host "created company $($matchedCompany.name)"
+        continue
+        #     $createdcompany = New-HuduCompany -Name "$($company)".Trim()
+        #     $matchedcompany = Get-HuduCompanies -id $createdcompany.idtools
+        #     $matchedCompany = $matchedCompany.company ?? $matchedCompany
+        #  write-host "created company $($matchedCompany.name)"
      }
 
     $companyPasswords = Get-HuduPasswords -CompanyId $matchedCompany.id
