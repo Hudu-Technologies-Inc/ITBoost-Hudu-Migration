@@ -55,11 +55,11 @@ if ($ITBoostData.ContainsKey("$sourceProperty")){
     if ($usingExistingLayout -and $existingLayout) {
         $flexisLayout = $existingLayout.asset_layout ?? $existingLayout
     } else {    
-        $flexisLayout = $allHuduLayouts | Where-Object { ... } | Select-Object -First 1
+        $flexisLayout = $allHuduLayouts | Where-Object { $_.name -eq $FlexiLayoutName } | Select-Object -First 1
     }
     $flexisLayout = $flexisLayout.asset_layout ?? $flexisLayout
     if (-not $flexisLayout){
-        $flexisLayout = (New-HuduAssetLayout -name "$FlexiLayoutName" -Fields $FlexiFields ...).asset_layout
+        $flexisLayout = (New-HuduAssetLayout -name "$FlexiLayoutName" -Fields $FlexiFields -IncludePasswords $true -IncludePhotos $true -IncludeComments $true -IncludeFiles $true -color "#6136ff" -icon_color "#ffffff"  -Icon $( $FontAwesomeMap[$($FontAwesomeMap.Keys | Where-Object {$_ -ilike "*$search*"} | select-object -first 1) ?? $($FontAwesomeMap["arrows"])])).asset_layout
         $flexisLayout = Get-HuduAssetLayouts -id $flexisLayout.id
     }
     $flexisFields = $flexisLayout.fields
