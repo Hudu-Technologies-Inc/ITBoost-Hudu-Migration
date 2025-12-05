@@ -1,5 +1,5 @@
 # reset all possible user-mapping inputs
-$smooshLabels = @(); $smooshToDestinationLabel = $null; $flexisMap = @{}; $flexiFields = @(); $jsonSourceFields = @(); $nameField = "Name";
+$smooshLabels = @(); $smooshToDestinationLabel = $null; $flexisMap = @{}; $flexiFields = @(); $jsonSourceFields = @(); $nameField = "Name"; $givenICon = $null;
 $standardlayouts = @('locations','configurations','contacts','domains','organizations','passwords')
 
 # Choose next layout to target, a template will be generated for you to fill out mappings
@@ -59,7 +59,19 @@ if ($ITBoostData.ContainsKey("$sourceProperty")){
     }
     $flexisLayout = $flexisLayout.asset_layout ?? $flexisLayout
     if (-not $flexisLayout){
-        $flexisLayout = (New-HuduAssetLayout -name "$FlexiLayoutName" -Fields $FlexiFields -IncludePasswords $true -IncludePhotos $true -IncludeComments $true -IncludeFiles $true -color "#6136ff" -icon_color "#ffffff"  -Icon $( $FontAwesomeMap[$($FontAwesomeMap.Keys | Where-Object {$_ -ilike "*$search*"} | select-object -first 1) ?? $($FontAwesomeMap["arrows"])])).asset_layout
+        $GivenIcon = try {$($FontAwesomeMap[$($FontAwesomeMap.Keys | Where-Object {$_ -ilike "*$sourceProperty*" -or $_ -ilike "*$FlexiLayoutName*"} | select-object -first 1)])} catch {"fas fa-boxes"}
+        try {
+        $flexisLayout = (New-HuduAssetLayout -name "$FlexiLayoutName" -Fields $FlexiFields -IncludePasswords $true -IncludePhotos $true -IncludeComments $true -IncludeFiles $true -color "#6136ff" -icon_color "#ffffff"  -Icon $givenICon)
+        # re-fetch to get proper shape
+        $flexisLayout = get-huduassetlayouts -name $FlexiLayoutName | select-object -first 1
+        $flexisLayout = $flexisLayout.asset_layout ?? $flexisLayout
+        } catch {
+            write-host "Error creating flexi layout: $_"
+        }
+        set-huduassetlayout -id $flexisLayout.id -active $true | Out-Null 
+        
+        write-host "Created new flexi layout $($flexisLayout.name) with id $($flexisLayout.id) and icon $($GivenIcon)"
+        
         $flexisLayout = Get-HuduAssetLayouts -id $flexisLayout.id
     }
     $flexisFields = $flexisLayout.fields
@@ -90,9 +102,15 @@ if ($ITBoostData.ContainsKey("$sourceProperty")){
                     continue
 
             } else {
-            
+                $GivenName = $null
+                $GivenName = $($companyflexi.$nameField ?? $companyflexi.name) ?? "Unnamed $sourceProperty"
+                if ($jsonSourceFields -contains $nameField.ToLowerInvariant()) {
+                    $GivenName = SafeDecode $GivenName
+                    $GivenName = $GivenName.value ?? $GivenName.text ?? $GivenName
+                }
+
                 $newflexirequest=@{
-                    Name=$($companyflexi.$nameField ?? $companyflexi.name)
+                    Name=$GivenName
                     CompanyID = $matchedCompany.id
                     AssetLayoutId=$flexisLayout.id
                 }
@@ -117,8 +135,8 @@ if ($ITBoostData.ContainsKey("$sourceProperty")){
                 }
 
                 if (-not $([string]::IsNullOrWhiteSpace($companyflexi.location))){
-                    $locationDeserialized= $($companyflexi.location | ConvertFrom-Json -depth 99 -ErrorAction SilentlyContinue) ?? $companyflexi.location
-                    $locationDeserialized = $locationDeserialized.value ?? $locationDeserialized.text ?? $locationDeserialized
+                    $locationDeserialized = SafeDecode $companyflexi.location
+                    $locationDeserialized = $locationDeserialized.value ?? $locationDeserialized.text ?? $locationDeserialized.location ?? $locationDeserialized
                     if (-not $([string]::IsNullOrWhiteSpace($locationDeserialized))){
                     $matchedlocation = Get-HuduAssets -AssetLayoutId ($LocationLayout.id ?? 2) -CompanyId $matchedCompany.id |
                                         Where-Object { test-equiv -A $_.name -B $locationDeserialized } |
@@ -140,7 +158,7 @@ if ($ITBoostData.ContainsKey("$sourceProperty")){
                     }
                 }
                 if ($SmooshedNotes.Count -gt 0){
-                    write-host "$($SmooshedNotes.Count) fields smooshed into $smooshToDestinationLabel for $($companyflexi.$nameField ?? $companyflexi.name) as $(if ($true -eq $SmooshFieldIsRichTExt) {"RichText"} else {"Text"})"
+                    write-host "$($SmooshedNotes.Count) fields smooshed into $smooshToDestinationLabel for $GivenName as $(if ($true -eq $SmooshFieldIsRichTExt) {"RichText"} else {"Text"})"
                     $smooshedContent = if ($true -eq $SmooshFieldIsRichTExt) {$SmooshedNotes -join "<br><hr><br>"} else { $SmooshedNotes -join "`n`n" }
                     $fields+=@{ $smooshToDestinationLabel = "$smooshedContent".Trim() }
             }
@@ -154,7 +172,7 @@ if ($ITBoostData.ContainsKey("$sourceProperty")){
                 $newFlexi = $newflexi.asset ?? $newflexi
 
             } catch {
-                write-host "Error creating location: $_"
+                write-host "Error creating $FlexiLayoutName- $_"
             }
         
         }
