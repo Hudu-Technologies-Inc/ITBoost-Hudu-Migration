@@ -118,14 +118,14 @@
     # 'Share_Name' = ' '
 
 $flexisMap = @{
-    'Share_Name' = ' '
+    'path' = 'IP Address'
 }# smoosh source label items to destination smooshable
 $contstants = @(
   @{"role" = "NAS"}
 )
-$smooshLabels = @()
+$smooshLabels = @("Share_Name","Mapped_Drive_(if_applicable)","host","Internal_\_External","ITBNotes","Notes")
 $smooshToDestinationLabel = "Notes"
-$jsonSourceFields = @("path","Mapped_Drive_(if_applicable)","host","Internal_\_External","ITBNotes","Notes")
+$jsonSourceFields = @("host","itbnotes")
 
 # where to get name from on source?
-$nameField = "Share_Name"
+$nameField = "path" 

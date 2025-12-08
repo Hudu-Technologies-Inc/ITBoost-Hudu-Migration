@@ -1,5 +1,5 @@
 # reset all possible user-mapping inputs
-$smooshLabels = @(); $smooshToDestinationLabel = $null; $flexisMap = @{}; $flexiFields = @(); $jsonSourceFields = @(); $nameField = "Name"; $givenICon = $null;
+$smooshLabels = @(); $smooshToDestinationLabel = $null; $flexisMap = @{}; $flexiFields = @(); $jsonSourceFields = @(); $nameField = "Name"; $givenICon = $null; $PasswordsFields = @(); $contstants = @();
 $standardlayouts = @('locations','configurations','contacts','domains','organizations','passwords')
 
 # Choose next layout to target, a template will be generated for you to fill out mappings
@@ -91,11 +91,12 @@ if ($ITBoostData.ContainsKey("$sourceProperty")){
     }
     foreach ($company in $groupedflexis.Keys) {
         write-host "starting $company"
+        $RelationsForAsset = @()
         $flexisForCompany = $groupedflexis[$company]
         $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
         if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { continue }
         foreach ($companyflexi in $flexisForCompany){
-            $matchedflexi = Get-HuduAssets -AssetLayoutId $flexisLayout.id -CompanyId $matchedCompany.id -Name $companyFlexi.name |
+            $matchedflexi = Get-HuduAssets -AssetLayoutId $flexisLayout.id -CompanyId $matchedCompany.id -Name $($companyflexi.$nameField ?? $companyFlexi.name) |
                                 Select-Object -First 1
             }
             if ($matchedflexi){
@@ -104,38 +105,48 @@ if ($ITBoostData.ContainsKey("$sourceProperty")){
 
             } else {
                 $GivenName = $null
-                $GivenName = $($companyflexi.$nameField ?? $companyflexi.name)
+                $AltLabel = $nameField -replace "_"," "                
+                $GivenName = $($companyflexi.$nameField ?? $companyflexi.$AltLabel ?? $companyflexi.name)
                 if ($jsonSourceFields -contains $nameField.ToLowerInvariant()) {
                     $GivenName = SafeDecode $GivenName
                     $GivenName = $GivenName.value ?? $GivenName.text ?? $GivenName
                 }
-
+                $GivenName = $(if ([string]::IsNullOrWhiteSpace($GivenName)) { $($companyflexi.path ?? $companyflexi.host ?? $companyflexi.share_name) } else { $GivenName })
+                $GivenName = $(if ([string]::IsNullOrWhiteSpace($GivenName)) { "Unnamed $sourceProperty" } else { $GivenName })
+                $matchedflexi = Get-HuduAssets -AssetLayoutId $flexisLayout.id -CompanyId $matchedCompany.id -Name $GivenName | Select-Object -First 1                
+                if ($matchedflexi){
+                    write-host "Skipping creation of $GivenName as it already exists."
+                    continue
+                }
+                
                 $newflexirequest=@{
-                    Name=$($GivenName ?? "Unnamed $sourceProperty")
+                    Name=$givenName
                     CompanyID = $matchedCompany.id
                     AssetLayoutId=$flexisLayout.id
                 }
                 # build fields from non-empty mapped values
                 $fields = $()
-                foreach ($key in $flexisMap.Keys | where-object {$_ -ne "location" -and $smooshLabels -notcontains $_}) {
+                foreach ($key in $flexisMap.Keys | where-object {$_ -ne "location" -and $smooshLabels -notcontains $_ -and $PasswordsFields -notcontains $_}) {
                     # pull value from CSV row
-                    $rowVal = $companyflexi.$key ?? $null
+                    $altLabel = $key -replace "_"," "
+                    $rowVal = $companyflexi.$key ?? $companyflexi.$altLabel ?? $null
                     if ($null -eq $rowVal) { continue }
                     $rowVal = [string]$rowVal
                     if ([string]::IsNullOrWhiteSpace($rowVal)) { continue }
 
                     $huduField = $flexisMap[$key]
+                    $setVal = [string]$rowVal
                     if ($dateFields -contains "$huduField".ToLowerInvariant()){
-                        $rowVal = Get-CoercedDate -inputDate $rowVal
+                        $setVal = Get-CoercedDate -inputDate $rowVal
                     } elseif ($NumberFields -contains "$huduField".ToLowerInvariant()){
-                        $rowVal = Get-CastIfNumeric -Value $rowVal
-                        $rowVal = $([int]([regex]::Match($rowVal, '\d+').Value))
+                        $setVal = Get-CastIfNumeric -Value $rowVal
+                        $setVal = $([int]([regex]::Match($rowVal, '\d+').Value))
                     } elseif ($WebsiteFields -contains "$huduField".ToLowerInvariant()){
-                        $rowVal = Normalize-HuduWebsiteUrl -Url $rowVal
+                        $setVal = Normalize-HuduWebsiteUrl -Url $rowVal
                     }
 
 
-                    $fields+=@{ $($huduField) = "$rowVal".Trim() }
+                    $fields+=@{ $($huduField) = "$setVal".Trim() }
                 }
 
                 if (-not $([string]::IsNullOrWhiteSpace($companyflexi.location))){
@@ -152,15 +163,22 @@ if ($ITBoostData.ContainsKey("$sourceProperty")){
                 }
                 $SmooshedNotes = @()
                 foreach ($smooshLabel in $smooshLabels){
-                    $rowVal = $companyflexi.$smooshLabel ?? $null
+                    $altLabel = $key -replace "_"," "
+                    $rowVal = $companyflexi.$smooshLabel ?? $companyflexi.$altLabel ?? $null
                     $rowVal = [string]$rowVal
                     if ([string]::IsNullOrWhiteSpace($rowVal)) { continue }
+                    if ($jsonSourceFields -contains $smooshLabel.ToLowerInvariant()) {
+                        $rowVal = SafeDecode $rowVal
+                        $rowVal = $rowVal.value ?? $rowVal.text ?? $rowVal
+                    }
+                    
                     if ($SmooshFieldIsRichTExt){
-                        $SmooshedNotes+= "$($smooshLabel)-<br>$($rowVal.Trim())"
+                        $SmooshedNotes+= "$($smooshLabel)-<br>$("$($rowVal)".Trim())"
                     } else {
-                        $SmooshedNotes+= "$($smooshLabel)- $($rowVal.Trim())"
+                        $SmooshedNotes+= "$($smooshLabel)- $("$($rowVal)".Trim())"
                     }
                 }
+                
                 if ($SmooshedNotes.Count -gt 0){
                     write-host "$($SmooshedNotes.Count) fields smooshed into $smooshToDestinationLabel for $GivenName as $(if ($true -eq $SmooshFieldIsRichTExt) {"RichText"} else {"Text"})"
                     $smooshedContent = if ($true -eq $SmooshFieldIsRichTExt) {$SmooshedNotes -join "<br><hr><br>"} else { $SmooshedNotes -join "`n`n" }
@@ -169,6 +187,23 @@ if ($ITBoostData.ContainsKey("$sourceProperty")){
             foreach ($constant in $contstants){
                 $fields+=$constant
             }
+            # foreach ($pfield in $PasswordsFields) {
+            #     $passwordName = SafeDecode "$($companyflexi.$pfield)"
+            #     $passwordName = $passwordName.name ?? $passwordName.value ?? $null
+            #     if ([string]::IsNullOrWhiteSpace($passwordName)){continue}
+            #     $passwordmatch = $null;
+            #     $passwordmatch = $ITBoostData.passwords.CSVData | where-object {$_.name -ieq $passwordName -and $_.organization -eq $companyflexi.organization} | Select-Object -first 1
+            #     if ($passwordmatch){
+            #         $passwordExists = $null
+            #         $passwordExists = Get-HuduPasswords -name $passwordName -CompanyId $matchedCompany.id | Select-Object -first 1
+            #         if ($null -ne $passwordExists){
+            #              $RelationsForAsset+= @{toable_type = "Asset"; fromable_type="Password"; fromable_id = $($passwordExists.asset_password.id ?? $passwordExists.id)
+            #         } 
+
+            #     }}
+
+
+            # }
             
         
             $newflexirequest["Fields"]=$fields

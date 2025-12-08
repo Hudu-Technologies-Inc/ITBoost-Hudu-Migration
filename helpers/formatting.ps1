@@ -136,7 +136,7 @@ function Normalize-HuduWebsiteUrl {
 
     # 1) UNC paths: \\server\share\path or //server/share/path
     if ($Url -match '^(\\\\|//)(?<host>[^\\/]+)(?<rest>.*)$') {
-        $host = $matches.host
+        $parsedHost = $matches.host
         $rest = $matches.rest -replace '\\','/'
         $rest = $rest.Trim()
 
@@ -144,7 +144,7 @@ function Normalize-HuduWebsiteUrl {
             $rest = '/' + $rest
         }
 
-        $normalized = "https://$host$rest"
+        $normalized = "https://$parsedHost$rest"
         return $normalized.TrimEnd('/')
     }
 
