@@ -1,5 +1,5 @@
 
-if (-not $ITBoostData.ContainsKey("Notes")){write-host "No direct notes data in csvs, skppping"; exit 0}
+if (-not $ITBoostData.ContainsKey('Internal Notes for PCA Only')){write-host "No direct notes data in csvs, skppping"; exit 0}
 
 $articlesFromSTandalonenotes = @{}
 

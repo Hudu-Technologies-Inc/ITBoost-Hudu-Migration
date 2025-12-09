@@ -1,6 +1,6 @@
 # reset all possible user-mapping inputs
 $smooshLabels = @(); $smooshToDestinationLabel = $null; $flexisMap = @{}; $flexiFields = @(); $jsonSourceFields = @(); $nameField = "Name"; $givenICon = $null; $PasswordsFields = @(); $contstants = @(); $listMaps = @{}; $tagMaps=@{}; $createNewItemsForLists = $false;
-$DocFields = @()
+$DocFields = @(); $LinkAsPasswords = @();
 $standardlayouts = @('locations','configurations','contacts','domains','organizations','passwords')
 
 # Choose next layout to target, a template will be generated for you to fill out mappings
@@ -277,11 +277,33 @@ foreach ($company in $groupedflexis.Keys) {
             $itemName = $itemName.name ?? $itemName.value ?? $null
             if ([string]::IsNullOrWhiteSpace($itemName)){continue}
             $asset = $null
-            $asset = Get-HuduAssets -CompanyId $matchedCompany.id -name $itemName | where-object {$_.id -ne $newFlexi.id} | Select-Object -first 1
-            $asset = $asset.article ?? $asset
-            if ($null -eq $asset -or $null -eq $asset.id ){continue}
-            New-HuduRelation -FromableType "Asset" -ToableType "Asset" -FromableID $newFlexi.id -ToableID $asset.id
+            $related = Get-HuduAssets -CompanyId $matchedCompany.id -name $itemName | where-object {$_.id -ne $newFlexi.id}
+            foreach ($r in $related){
+                $asset = $r.asset ?? $asset
+                if ($null -eq $asset -or $null -eq $asset.id ){continue}
+                New-HuduRelation -FromableType "Asset" -ToableType "Asset" -FromableID $newFlexi.id -ToableID $asset.id
+            }
         }
+        foreach ($eligiblepassField in $LinkAsPasswords) {
+            $flexipass = Safedecode $companyflexi.$eligiblepassField
+            $flexipass = $flexipass.name ?? $flexipass.value ?? $flexipass
+            if ([string]::IsNullOrWhiteSpace($flexipass)){write-host "empty pass $($companyflexi.$eligiblepassField)"; continue}
+
+            $passrequest = @{CompanyId=$matchedCompany.id; Name = "$givenName $eligiblepassField"; PasswordableType = "Asset"; PasswordableId=$newFlexi.id; Password=$flexipass; PasswordType="$($existingLayout.name) Password"}
+            $userNameKey = $($companyflexi.keys | Where-Object {$_ -ilike "*user*" -or $_ -ilike "*username*"} | Select-Object -first 1)
+            $userNameKey = $($companyflexi.keys | Where-Object {$_ -ilike "*user*" -or $_ -ilike "*username*"} | Select-Object -first 1)
+            if (-not [string]::IsNullOrEmpty($userNameKey)){
+                $userName = Get-ValueFromCSVKeyVariants -Row $companyflexi -Label $userNameKey
+                if (-not [string]::IsNullOrEmpty($userName)){$passrequest["UserName"]=$userName}
+            }
+            $existingpass = get-hudupasswords -CompanyId $matchedCompany.id -name $givenName | Select-Object -first 1
+            $existingpass=$existingpass.asset_password ?? $existingpass
+            if ($null -ne $existingpass -and $null -ne $existingpass.id){$passrequest["Id"]=$existingpass.id}
+            if ($passrequest.ContainsKey("Id") -and $null -ne $passrequest.id){
+                Set-HuduPassword @passrequest
+            } else {New-HuduPassword @passrequest}
+        }
+
     }
 
 
