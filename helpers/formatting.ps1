@@ -125,6 +125,29 @@ $PHONE_LABELS     = @('phone','phone number','primary phone','work phone','offic
     
     }
 
+function Get-ValueFromCSVKeyVariants {
+    param(
+        [pscustomobject]$Row,
+        [string]$Label
+    )
+    if ([string]::IsNullOrWhiteSpace($label) -or $null -eq $Row) {return $null}
+
+    $candidates = @(
+        $Label
+        ($Label -replace "_"," ")
+        ($Label -replace " ","_")
+        $Label.Trim()
+        $Label.TrimEnd(':')
+        ($Label.TrimEnd(':') + ':')
+    ) | Where-Object { $_ } | Select-Object -Unique
+
+    $prop = $Row.PSObject.Properties |
+        Where-Object { $candidates -contains $_.Name } |
+        Select-Object -First 1
+    return $prop.Value
+}
+
+
 function Normalize-HuduWebsiteUrl {
     param(
         [Parameter(Mandatory)]
@@ -435,6 +458,8 @@ $smooshLabels = @()
 $smooshToDestinationLabel = $null
 $jsonSourceFields = @()
 $nameField = "Name"
+$createNewItemsForLists=$false
+$givenICon = $null; $PasswordsFields = @(); $contstants = @(); $listMaps = @{};
 '@
     $TemplateOutput | Set-Content -Path $outFile -Encoding UTF8 -Force
 
@@ -691,6 +716,11 @@ function Find-HuduContact {
   if ($best.Score -ge $ScoreThreshold) { return $best.Asset } else { return $null }
 }
 
+function ChoseBest-ByName {
+    param ([string]$Name,[array]$choices)
+return $($choices | ForEach-Object {
+[pscustomobject]@{Choice = $_; Score  = $(Get-SimilaritySafe -a "$Name" -b $_.name);}} | where-object {$_.Score -ge 0.98} | Sort-Object Score -Descending | select-object -First 1).Choice
+}
 function Normalize-Text {
     param([string]$s)
     if ([string]::IsNullOrWhiteSpace($s)) { return $null }
