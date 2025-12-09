@@ -1,5 +1,6 @@
 # reset all possible user-mapping inputs
-$smooshLabels = @(); $smooshToDestinationLabel = $null; $flexisMap = @{}; $flexiFields = @(); $jsonSourceFields = @(); $nameField = "Name"; $givenICon = $null; $PasswordsFields = @(); $contstants = @(); $listMaps = @{}; $createNewItemsForLists = $false;
+$smooshLabels = @(); $smooshToDestinationLabel = $null; $flexisMap = @{}; $flexiFields = @(); $jsonSourceFields = @(); $nameField = "Name"; $givenICon = $null; $PasswordsFields = @(); $contstants = @(); $listMaps = @{}; $tagMaps=@{}; $createNewItemsForLists = $false;
+$DocFields = @()
 $standardlayouts = @('locations','configurations','contacts','domains','organizations','passwords')
 
 # Choose next layout to target, a template will be generated for you to fill out mappings
@@ -81,6 +82,13 @@ $dateFields = $flexisFields | Where-Object { $_.field_type -eq "Date" } | Select
 $NumberFields = $flexisFields | Where-Object { $_.field_type -eq "Number" } | Select-Object -ExpandProperty label
 $WebsiteFields = $flexisFields | Where-Object { $_.field_type -eq "Website" } | Select-Object -ExpandProperty label
 $ListFields = $flexisFields | Where-Object { $_.field_type -eq "ListSelect" }
+$tagFields = $flexisFields | Where-Object { $_.field_type -eq "AssetTag" }
+foreach ($tagField in $tagFields){
+    $al = $(get-huduassetlayouts -id $tagfield.linkable_id)
+    $al = $al.asset_layout ?? $al
+    $tagMaps["$($tagfield.label)"] = $al
+}
+
 foreach ($listField in $ListFields){
     $ListMaps["$($listField.label)"]=$(get-hudulists -id $listfield.list_id)
 }
@@ -140,12 +148,27 @@ foreach ($company in $groupedflexis.Keys) {
             $rowVal = [string]$rowVal
             if ([string]::IsNullOrWhiteSpace($rowVal)) { continue }
 
+
+            if ($jsonSourceFields -contains $key) {
+                $rowVal = SafeDecode $rowVal
+                $rowVal = $rowVal.value ?? $rowVal.text ?? $rowVal
+            }
+
             $huduField = $flexisMap[$key]
             Write-Host "Hudufield is $hudufield for $key"
 
             $MatchedList = if ($ListMaps.ContainsKey("$huduField")) { $ListMaps["$huduField"] } else { $null }
-
-            if ($null -ne $MatchedList) {
+            $MatchedTagfield = if ($tagMaps.ContainsKey("$huduField")) { $tagMaps["$huduField"] } else { $null }
+            if ($null -ne $MatchedTagfield) {
+                $matchedAsset=$null;
+                $assetDeserialized = SafeDecode $rowVal
+                $AssetName = $assetDeserialized.value ?? $assetDeserialized.text ?? $rowVal
+                if ([string]::IsNullOrWhiteSpace($AssetName)){continue}
+                $matchedAsset = Get-HuduAssets -CompanyId $matchedCompany.id -AssetLayoutId $MatchedTagfield.id -name $assetName | Select-Object -first 1
+                $matchedAsset = $matchedAsset.asset ?? $matchedAsset
+                if ($null -eq $matchedAsset -or $null -eq $matchedasset.id){continue}
+                $setVal = "[$($matchedAsset.id)]"
+            } elseif ($null -ne $MatchedList) {
                 $Listoptions = $MatchedList.list_items
                 Write-Host "Comparing row val $rowVal to available List options $($Listoptions.name -join ', ')" -ForegroundColor Green
 
@@ -173,6 +196,7 @@ foreach ($company in $groupedflexis.Keys) {
                 $setVal = [int]([regex]::Match($rowVal, '\d+').Value)
             } elseif ($WebsiteFields -contains "$huduField".ToLowerInvariant()) {
                 $setVal = Normalize-HuduWebsiteUrl -Url $rowVal
+                if ([string]::IsNullOrEmpty($setVal)){continue}
             } else {
                 $setVal = $rowVal
             }
@@ -229,7 +253,7 @@ foreach ($company in $groupedflexis.Keys) {
 
     $newflexirequest["Fields"]=$fields
 
-
+    $newFlexi = $null
     try {
         $newflexi = New-Huduasset @newflexirequest
         $newFlexi = $newflexi.asset ?? $newflexi
@@ -237,7 +261,30 @@ foreach ($company in $groupedflexis.Keys) {
     } catch {
         write-host "Error creating $FlexiLayoutName from $sourceProperty- $_"
     }
-    
+    if ($null -ne $newFlexi){
+        foreach ($doc in $DocFields){
+            $DocName = Safedecode $companyflexi.$doc
+            $DocName = $DocName.name ?? $DocName.value ?? $null
+            if ([string]::IsNullOrWhiteSpace($DocName)){continue}
+            $article = $null
+            $article = Get-HuduArticles -CompanyId $matchedCompany.id -name $DocName | Select-Object -first 1
+            $article = $article.article ?? $article
+            if ($null -eq $article -or $null -eq $article.id ){continue}
+            New-HuduRelation -FromableType "Asset" -ToableType "Article" -FromableID $newFlexi.id -ToableID $article.id
+        }
+        foreach ($related in $RelateditemFields) {
+            $itemName = Safedecode $companyflexi.$related
+            $itemName = $itemName.name ?? $itemName.value ?? $null
+            if ([string]::IsNullOrWhiteSpace($itemName)){continue}
+            $asset = $null
+            $asset = Get-HuduAssets -CompanyId $matchedCompany.id -name $itemName | where-object {$_.id -ne $newFlexi.id} | Select-Object -first 1
+            $asset = $asset.article ?? $asset
+            if ($null -eq $asset -or $null -eq $asset.id ){continue}
+            New-HuduRelation -FromableType "Asset" -ToableType "Asset" -FromableID $newFlexi.id -ToableID $asset.id
+        }
+    }
+
+
     
     }
 }

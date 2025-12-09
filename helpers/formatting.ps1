@@ -460,6 +460,10 @@ $jsonSourceFields = @()
 $nameField = "Name"
 $createNewItemsForLists=$false
 $givenICon = $null; $PasswordsFields = @(); $contstants = @(); $listMaps = @{};
+# relation to doc
+$DocFields = @()
+# general relations
+$RelateditemFields = @()
 '@
     $TemplateOutput | Set-Content -Path $outFile -Encoding UTF8 -Force
 
@@ -503,9 +507,13 @@ $($flexisMapLines -join "`n")
 $smooshLabels = @()
 $smooshToDestinationLabel = $null
 $jsonSourceFields = @()
-
-# where to get name from on source?
 $nameField = "Name"
+$createNewItemsForLists=$false
+$givenICon = $null; $PasswordsFields = @(); $contstants = @(); $listMaps = @{};
+# relation to doc
+$DocFields = @()
+# general relations
+$RelateditemFields = @()
 '@
     $TemplateOutput | Set-Content -Path $outFile -Encoding UTF8 -Force
 
