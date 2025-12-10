@@ -195,7 +195,7 @@ foreach ($company in $groupedflexis.Keys) {
                 $setVal = Get-CastIfNumeric -Value $rowVal
                 $setVal = [int]([regex]::Match($rowVal, '\d+').Value)
             } elseif ($WebsiteFields -contains "$huduField".ToLowerInvariant()) {
-                $setVal = Normalize-HuduWebsiteUrl -Url $rowVal
+                $setVal = Normalize-WebURL -Url $rowVal
                 if ([string]::IsNullOrEmpty($setVal)){continue}
             } else {
                 $setVal = $rowVal

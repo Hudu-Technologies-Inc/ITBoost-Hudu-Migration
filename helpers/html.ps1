@@ -465,3 +465,53 @@ $anchorpat = @'
     if ($doc -ne $null) { try { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($doc) } catch {} }
   }
 }
+
+function ConvertFrom-HtmlToPlainText {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Html
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Html)) {
+        return $null
+    }
+
+    # Normalize line-break style tags first
+    $Html = $Html -replace '(?i)<br\s*/?>', "`n"
+    $Html = $Html -replace '(?i)</p\s*>', "`n`n"
+    $Html = $Html -replace '(?i)<hr\s*/?>', "`n---`n"
+    $Html = $Html -replace '(?i)</li\s*>', "`n"
+    $Html = $Html -replace '(?i)<li\s*>', " - "
+
+    $Html = $Html -replace '<[^>]+>', ''
+
+    $Html = [System.Net.WebUtility]::HtmlDecode($Html)
+
+    $Html = $Html -replace "`r`n", "`n"
+    $Html = $Html -replace "[ \t]+\n", "`n"
+    $Html = $Html -replace "`n{3,}", "`n`n"
+    $Html = $Html.Trim()
+
+    return $Html
+}
+
+function Remove-HtmlTags {
+    param (
+        [string]$InputString
+    )
+    $tags = @(
+'hr','br', 'tr', 'td', 'th', 'table', 'div', 'span',
+'p', 'ul', 'ol', 'li', 'h[1-6]', 'strong', 'em', 'b', 'i',
+'colgroup', 'col', 'input', 'column', 'section', 'article',
+'header', 'footer', 'aside', 'nav', 'main', 'figure', 'figcaption',
+'blockquote', 'pre', 'address', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+'thead', 'tbody', 'tfoot','script','noscript','style','template','head','svg','math'
+        )
+    $cleaned = $InputString
+    foreach ($tag in $tags) {
+        # Regex matches both opening <tag ...> and closing </tag>
+        $pattern = "<\/?$tag\b[^>]*>"
+        $cleaned = [regex]::Replace($cleaned, $pattern, " ", "IgnoreCase")
+    }
+    return $cleaned.Trim()
+}

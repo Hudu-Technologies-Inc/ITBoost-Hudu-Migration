@@ -148,7 +148,7 @@ function Get-ValueFromCSVKeyVariants {
 }
 
 
-function Normalize-HuduWebsiteUrl {
+function Normalize-WebURL {
     param(
         [Parameter(Mandatory)]
         [string]$Url
@@ -303,19 +303,7 @@ function Get-NormalizedDropdownOptions {
   }
   if ($out.Count -eq 0) { @('None','N/A') } elseif ($out.Count -eq 1) { @('None',$out[0] ?? "N/A") } else { $out.ToArray() }
 }
-function Get-UniqueListName {
-  param([Parameter(Mandatory)][string]$BaseName,[bool]$allowReuse=$false)
 
-  $name = $BaseName.Trim()
-  $i = 0
-  while ($true) {
-    $existing = Get-HuduLists -name $name
-    if (-not $existing) { return $name }
-    if ($existing -and $true -eq $allowReuse) {return $existing}
-    $i++
-    $name = "{0}-{1}" -f $BaseName.Trim(), $i
-  }
-}
 function Get-SafeFilename {
     param([string]$Name,
         [int]$MaxLength=25
@@ -522,141 +510,6 @@ $LinkAsPasswords = @();
     return $TemplateOutput
 }
 
-
-function Get-HuduLayoutLike {
-  param ([array]$LabelSet)
-
-  foreach ($layout in $(get-huduassetlayouts)){
-    foreach ($Label in $LabelSet){
-      if ($true -eq $(Test-Equiv -A $locationLabel -$layout.name)){
-        return $layout
-      }
-    }
-  }
-  Write-Host "No location layout found. Ensure your location layout name is in LocationLayoutNames array ($LocationLayoutNames)"
-  return $null
-}
-function Get-HuduCompanyFromName {
-    # use index first. Then existing list. Then API call.
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$CompanyName,
-        [array]$HuduCompanies,
-        [bool]$includenicknames = $false,
-        [array]$existingIndex = $null
-    )
-    if ([string]::IsNullOrWhiteSpace($CompanyName)) { return $null }
-    $matchedCompany = $null
-    if ($existingIndex -ne $null -and $existingIndex.count -gt 0){
-        $matchedCompany = $matchedCompany ?? $existingIndex | where-object {
-            ($_.CompanyName -ieq $CompanyName) -or
-            [bool]$(test-equiv -A $_.CompanyName -B $CompanyName) } | Select-Object -First 1
-        if ($includenicknames){
-            $matchedCompany = $matchedCompany ?? $existingIndex | where-object {
-                (-not [string]::IsNullOrWhiteSpace($_.HuduObject.nickname)) -and (
-                    ($_.HuduObject.nickname -ieq $CompanyName) -or
-                    [bool]$(test-equiv -A $_.HuduObject.nickname -B $CompanyName))
-            } | Select-Object -First 1
-        }
-    }
-
-
-    $matchedCompany = $matchedCompany ?? $HuduCompanies | where-object {
-            ($_.name -ieq $CompanyName) -or
-            [bool]$(test-equiv -A $_.name -B $CompanyName)`
-        } | Select-Object -First 1
-    $matchedCompany = $matchedCompany ?? $(Get-HuduCompanies -Name $CompanyName | select-object -first 1)
-    $matchedCompany = $matchedCompany ?? (get-huducompanies | where-object {[bool]$(test-equiv -A $_.name -B $CompanyName)} | select-object -first 1)
-    
-    if ($includenicknames){
-        $matchedCompany = $HuduCompanies | where-object {
-                ($_.nickname -ieq $CompanyName) -or
-                [bool]$(test-equiv -A $_.nickname -B $CompanyName)`
-            } | Select-Object -First 1
-        $matchedCompany = $matchedCompany ?? (get-huducompanies | where-object {[bool]$(test-equiv -A $_.name -B $CompanyName)} | select-object -first 1)
-    }
-    return $matchedCompany
-}
-function ConvertFrom-HtmlToPlainText {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Html
-    )
-
-    if ([string]::IsNullOrWhiteSpace($Html)) {
-        return $null
-    }
-
-    # Normalize line-break style tags first
-    $Html = $Html -replace '(?i)<br\s*/?>', "`n"
-    $Html = $Html -replace '(?i)</p\s*>', "`n`n"
-    $Html = $Html -replace '(?i)<hr\s*/?>', "`n---`n"
-    $Html = $Html -replace '(?i)</li\s*>', "`n"
-    $Html = $Html -replace '(?i)<li\s*>', " - "
-
-    $Html = $Html -replace '<[^>]+>', ''
-
-    $Html = [System.Net.WebUtility]::HtmlDecode($Html)
-
-    $Html = $Html -replace "`r`n", "`n"
-    $Html = $Html -replace "[ \t]+\n", "`n"
-    $Html = $Html -replace "`n{3,}", "`n`n"
-    $Html = $Html.Trim()
-
-    return $Html
-}
-
-function Remove-HtmlTags {
-    param (
-        [string]$InputString
-    )
-    $tags = @(
-'hr','br', 'tr', 'td', 'th', 'table', 'div', 'span',
-'p', 'ul', 'ol', 'li', 'h[1-6]', 'strong', 'em', 'b', 'i',
-'colgroup', 'col', 'input', 'column', 'section', 'article',
-'header', 'footer', 'aside', 'nav', 'main', 'figure', 'figcaption',
-'blockquote', 'pre', 'address', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-'thead', 'tbody', 'tfoot','script','noscript','style','template','head','svg','math'
-        )
-    $cleaned = $InputString
-    foreach ($tag in $tags) {
-        # Regex matches both opening <tag ...> and closing </tag>
-        $pattern = "<\/?$tag\b[^>]*>"
-        $cleaned = [regex]::Replace($cleaned, $pattern, " ", "IgnoreCase")
-    }
-    return $cleaned.Trim()
-}
-function Get-HuduAssetFromName {
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$Name,
-        [Parameter(Mandatory = $true)]
-        [int]$AssetLayoutId,
-        [array]$Assets
-    )
-    if ([string]::IsNullOrWhiteSpace($Name) -or -not $AssetLayoutId -or $AssetLayoutId -lt 1) { return $null }
-    $matchedAsset = $null
-    $matchedAsset = $Assets | where-object {
-            ($_.name -ieq $Name) -or
-            [bool]$(test-equiv -A $_.name -B $Name)`
-        } | Select-Object -First 1
-    $matchedAsset = $matchedAsset ?? 
-        $(Get-HuduAssets -AssetLayoutId $AssetLayoutId -Name $CompanyName) ?? 
-         (get-huduassets -AssetLayoutId $AssetLayoutId | where-object {[bool]$(test-equiv -A $_.name -B $Name)} | select-object -first 1)
-    return $matchedCompany
-}
-
-function Get-HuduFieldValue {
-  [CmdletBinding()]
-  param(
-    [Parameter(Mandatory)][object]$Asset,
-    [Parameter(Mandatory)][string[]]$Labels
-  )
-  $labelsLC = $Labels | ForEach-Object { $_.ToLower() }
-  $Asset.fields |
-    Where-Object { $_.label -and $labelsLC -contains ([string]$_.label).ToLower() } |
-    Select-Object -First 1 -ExpandProperty value
-}
 
 function Normalize-Name([string]$s){
   if ([string]::IsNullOrWhiteSpace($s)) { return $null }
@@ -1100,6 +953,8 @@ function Test-LetterRatio {
     }
 }
 
+
+
 function Test-IsHtml {
     [CmdletBinding()]
     param(
@@ -1443,38 +1298,6 @@ foreach ($term in $locationSeed) {
     $null = $PossibleLocationNames.Add($v)
   }
 }
-function New-HuduAddress {
-    param([Parameter(Mandatory)][object]$Input)
-
-    # Parse JSON strings; pass through objects
-    $o = if ($Input -is [string]) { try { $Input | ConvertFrom-Json } catch { $null } } else { $Input }
-    if (-not $o) { return $null }
-
-    # Helper to grab the first present alias
-    $first = {
-        param($obj, [string[]]$names)
-        foreach ($n in $names) { if ($obj.PSObject.Properties.Name -contains $n) { return $obj.$n } }
-        return $null
-    }
-
-    $addr1 = & $first $o @('address_line_1','address1','address_1','line1','street','street1','address')
-    $addr2 = & $first $o @('address_line_2','address2','address_2','line2','street2')
-    $city           = & $first $o @('city','town')
-    $state          = & $first $o @('state','province','region')
-    $zip            = & $first $o @('zip','zipcode','postal','postal_code')
-    $cntry   = & $first $o @('country_name','country')
-    if ($addr1 -or $addr2 -or $city -or $state -or $zip -or $cntry) {
-    $NewAddress = [ordered]@{
-        address_line_1 = $addr1
-        city           = $city
-        state          = $state
-        zip            = $zip
-        country_name   = $cntry
-    }
-    if ($addr2) { $NewAddress['address_line_2'] = $addr2 }
-    return $NewAddress
-    } else {return $null}
-}
 
 function Get-NeedlePresentInHaystack {
     <#
@@ -1547,77 +1370,7 @@ function Get-PhonesFromRow($row) {
     ForEach-Object { ($_ -replace '[^\d\+xX#]','').Trim() } |
     Sort-Object -Unique
 }
-function Resolve-LocationForCompany {
-  param(
-    [Parameter(Mandatory)][int]$CompanyId,
-    [Parameter(Mandatory)]$Row,
-    [Parameter(Mandatory)]$AllHuduLocations,
-    [string[]]$Hints
-  )
 
-  # If $Hints can be null at call-time, set a safe default here (avoid default param expr that depends on external vars)
-  if (-not $Hints) { $Hints = @('location','branch','office','site','building') }
-
-  $candKeys = @()
-  foreach ($prop in $Row.PSObject.Properties) {
-    $propName = $prop.Name
-    if ($Hints.Where({ param($h) (Test-Fuzzy $propName $h) }, 'First')) {
-      $candKeys += $propName
-    }
-  }
-  $candKeys = $candKeys | Sort-Object -Unique
-
-  $candVals = @()
-  foreach ($k in $candKeys) {
-    $v = $Row.$k
-    if ($null -ne $v -and "$v".Trim()) { $candVals += "$v" }
-  }
-  if (-not $candVals) { return $null }
-
-  $companyLocs = $AllHuduLocations | Where-Object { $_.company_id -eq $CompanyId }
-  foreach ($cv in $candVals) {
-    $hit = $companyLocs | Where-Object { test-equiv -A $_.name -B $cv } | Select-Object -First 1
-    if ($hit) { return $hit }
-  }
-  return $null
-}
-function Get-ListItemFuzzy {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)][string]$Source,
-        [Parameter(Mandatory)][int]$ListId,
-        [double]$MinSimilarity = 0.65   # tweak as needed
-    )
-
-    if ([string]::IsNullOrWhiteSpace($Source)) { return $null }
-
-    $list = Get-HuduLists -Id $ListId
-    if (-not $list -or -not $list.list_items) { return $null }
-
-    $sNorm = Normalize-Text $Source
-
-    $bestItem  = $null
-    $bestScore = -1.0
-
-    foreach ($item in $list.list_items) {
-        $name = [string]$item.name
-        if ([string]::IsNullOrWhiteSpace($name)) { continue }
-        $nNorm = Normalize-Text $name
-
-        $score = if ($nNorm -eq $sNorm) { 1.0 } else { Get-Similarity $name $Source }
-        if ($nNorm.StartsWith($sNorm) -or $sNorm.StartsWith($nNorm)) {
-            $score = [Math]::Min(1.0, $score + 0.02)
-        }
-
-        if ($score -gt $bestScore) {
-            $bestScore = $score
-            $bestItem  = $item
-        }
-    }
-
-    if ($bestScore -lt $MinSimilarity) { return $null }
-    return $bestItem
-}
 
 function Get-SynonymBag {
     [CmdletBinding()]
@@ -1679,33 +1432,7 @@ function Build-FieldsFromRow {
         
       }
 
-    #   if ($field.field_type -eq "AssetTag"){
-    #     if (-not $field.linkable_id -or $field.linkable_id -lt 1){continue}
-    #         $layoutForLinking = Get-HuduAssetLayouts -id $field.linkable_id
-    #         $possiblyLinkedAssets=Get-HuduAssets -CompanyId $companyId -id $field.linkable_id
-    #         $bag = Get-FieldSynonymsSimple -TargetLabel $layoutForLinking.name -IncludeVariants
-    #         $val = Find-RowValueByLabel -TargetLabel $label -Row $Row -SynonymBag $bag -fieldType $field.field_type
-    #         $bestItem  = $null
-    #         $bestScore = -1.0            
-    #         if ($val){
-    #             foreach ($asset in $possiblyLinkedAssets) {
-    #                 $name = [string]$asset.name
-    #                 if ([string]::IsNullOrWhiteSpace($name)) { continue }
-    #                 $nNorm = Normalize-Text $name
-    #                 $score = if ($nNorm -eq $sNorm) { 1.0 } else { Get-Similarity $name $val }
-    #                 if ($nNorm.StartsWith($sNorm) -or $sNorm.StartsWith($nNorm)) {
-    #                     $score = [Math]::Min(1.0, $score + 0.02)
-    #                 }
-    #                 if ($score -gt $bestScore) {
-    #                     $bestScore = $score
-    #                     $bestItem  = $asset
-    #                 }
-    #             }
-    #         }
-    #         if ($bestItem -and $bestitem.id){ $val = $bestItem.id } else {continue}
-    #         Write-Host "Matched Asset Tag field $label to $($layoutForLinking.name) asset $($bestItem.name) with score of $($bestScore)"
-    #   }
-      # special case addressdata
+
       if ($field.field_type -eq "AddressData"){
         $tmpVal=Build-FieldsFromRow -Row $Row -LayoutFields @(
             @{label = "address_line_1"},

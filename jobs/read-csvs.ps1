@@ -14,3 +14,12 @@ foreach ($f in $CSVFiles){
         }
     }
 }
+# $allProps=@()
+# $uniqueProps=@()
+# foreach ($key in $itboostdata.keys){
+#     $Props = Get-CSVProperties $itboostdata.$key.csvdata
+#     if ($props -eq $null -or $props.count -lt 1){continue}
+#     $allProps+=$props
+# }
+# $uniqueProps = $allProps | select-object -unique
+# $uniqueProps | Sort-Object | format-list -force
