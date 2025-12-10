@@ -49,6 +49,7 @@ foreach ($job in @(
 "standalone-notes",
 "flexi-layout",
 "passwords",
+"gallery",
 "wrap-up"
 )){
 # foreach ($job in @("get-hududata","read-csvs")){

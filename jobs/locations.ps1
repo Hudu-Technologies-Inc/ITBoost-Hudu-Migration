@@ -22,7 +22,7 @@ $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ??
 
 if ($ITBoostData.ContainsKey("locations")){
 
-    $LocationLayout = Get-HuduLayoutLike -labelSet @('location','branch','office location','site','building','sucursal','standort','filiale','vestiging','sede')
+    $LocationLayout = Get-HuduAssetLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "location" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "locations" -Haystack $_.name)) } | Select-Object -First 1
 
     if (-not $LocationLayout){
         $locationlayout=$(New-HuduAssetLayout -name "location" -Fields @(
