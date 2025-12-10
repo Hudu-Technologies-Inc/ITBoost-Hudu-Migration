@@ -1,21 +1,46 @@
-# CsvRow                   :
-# id                       : 654409188395c73c5e17d13f
-# organization             : Ten Penny
-# first_name               : Steven
-# last_name                : Lloyd
-# contact_type             :
-# companyUuid              : 77f9d972-8a3d-478e-9e57-36663f8b15ca
-# title                    :
-# resource_type            :
-# resource_id              :
-# relationship             :
-# location                 : Batch Import 5
-# primary_phone            :
-# primary_email            :
-# notes                    : []
-# additional_contact_items :
-# password                 : []
-# types                    : []
+#boost
+
+# additional_contact_items
+# companyUuid
+# contact_type
+# first_name
+# id
+# last_name
+# location
+# notes
+# organization
+# password
+# primary_email
+# primary_phone
+# relationship
+# resource_id
+# resource_type
+# title
+# types
+
+
+# $hudu
+# Status
+# Email Address
+# Office Phone number (DID)
+# Cell Phone Number
+# Preferred Communications
+# Gender
+# Title
+# Department
+# Accept Text?
+# Workstation used
+
+
+$ContactsMap = @{
+primary_email = "Email Address"
+contact_type="Contact Type"
+primary_phone = "Office Phone number (DID)"
+title = "Title"
+}
+$smooshToNotesProps = @("notes","resource_type","contact_type","relationship","additional_contact_items")
+$SmooshPropsTo = "Notes"
+
 #             @{label        = 'first Name'; field_type   = 'Text'; show_in_list = 'true'; position     = 1},
 #             @{label        = 'Last Name'; field_type   = 'Text'; show_in_list = 'false';position     = 2},
 #             @{label        = 'Title'; field_type   = 'Text'; show_in_list = 'true'; position     = 3},
@@ -26,17 +51,20 @@
 #             @{label        = 'Emails'; field_type   = 'RichText'; show_in_list = 'false';position     = 8},
 #             @{label        = 'Phones'; field_type   = 'RichText'; show_in_list = 'false';position     = 9}
 
+# Status
+# Email Address
+# Office Phone number (DID)`
+# Cell Phone Number
+# Preferred Communications
+# Gender
+# Title
+# Department
+# Accept Text?
+# Workstation used
+# Notes
+# IP Address of Primary Computer
 
-$ContactsMap = @{
-first_name="First Name"
-last_name="Last Name"
-contact_type="Contact Type"
-primary_phone = "Phones"
-primary_email = "Emails"
-notes = "Notes"
-title = "Title"
-}
-$LocationLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "location" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "branch" -Haystack $_.name)) } | Select-Object -First 1; $LocationLayout = $LocationLayout.asset_layout ?? $LocationLayout;
+$LocationLayout = Get-HuduAssetLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "location" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "locations" -Haystack $_.name)) } | Select-Object -First 1
 
 function Build-HuduContactIndex {
   [CmdletBinding()]
@@ -83,7 +111,12 @@ function Build-HuduContactIndex {
   return $idx
 }
 
+
+# load companies index if available
+$ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
+
 if ($ITBoostData.ContainsKey("contacts")){
+    if (-not $ITBoostData.contacts.ContainsKey('matches')) { $ITBoostData.contacts['matches'] = @() }
     $contactsLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "contact" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "people" -Haystack $_.name)) } | Select-Object -First 1
     if (-not $contactsLayout){
         $contactsLayout=$(New-HuduAssetLayout -name "contacts" -Fields @(
@@ -112,18 +145,7 @@ if ($ITBoostData.ContainsKey("contacts")){
     foreach ($company in $groupedContacts.Keys) {
         write-host "starting $company"
         $contactsForCompany = $groupedContacts[$company]
-        $matchedCompany = $huduCompanies | where-object {
-            ($_.name -eq $company) -or
-            [bool]$(Test-NameEquivalent -A $_.name -B "*$($company)*") -or
-            [bool]$(Test-NameEquivalent -A $_.nickname -B "*$($company)*")} | Select-Object -First 1
-        $matchedCompany = $huduCompanies | Where-Object {
-            $_.name -eq $company -or
-            (Test-NameEquivalent -A $_.name -B "*$company*") -or
-            (Test-NameEquivalent -A $_.nickname -B "*$company*")
-            } | Select-Object -First 1
-
-            $matchedCompany = $matchedCompany ?? (Get-HuduCompanies -Name $company | Select-Object -First 1)
-
+        $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
         if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { continue }
         foreach ($companyContact in $contactsForCompany){
             $matchedContact = Find-HuduContact `
@@ -145,8 +167,6 @@ if ($ITBoostData.ContainsKey("contacts")){
                     Write-Host "Matched $humanName to $($matchedcontact.name) for $($matchedCompany.name)"
 
                     # ensure the array exists once
-                    if (-not $ITBoostData.contacts.ContainsKey('matches')) { $ITBoostData.contacts['matches'] = @() }
-
                     $ITBoostData.contacts['matches'] += @{
                         CompanyName      = $companyContact.organization
                         CsvRow           = $companyContact.CsvRow
@@ -165,11 +185,14 @@ if ($ITBoostData.ContainsKey("contacts")){
                     CompanyID = $matchedCompany.id
                     AssetLayoutId=$contactsLayout.id
                 }
+                # build fields
+                $fields = @()
                 if ($false -eq $UseSimpleMap){
-                    $newcontactrequest["Fields"]=Build-FieldsFromRow -row $companyContact -layoutFields $contactsFields -companyId $matchedCompany.id
+                    $fields=Build-FieldsFromRow -row $companyContact -layoutFields $contactsFields -companyId $matchedCompany.id
                 
                 } else {
-                    $fields = @()
+
+
                     foreach ($key in $ContactsMap.Keys | where-object {$_ -ne "location"}) {
                         # pull value from CSV row
                         $rowVal = $companyContact.$key ?? $null
@@ -179,29 +202,40 @@ if ($ITBoostData.ContainsKey("contacts")){
 
                         $huduField = $ContactsMap[$key]
                         $fields+=@{ $($huduField) = $rowVal.Trim() }
-                        }
-
-                        if (-not $([string]::IsNullOrWhiteSpace($companyContact.location))){
-                                $matchedlocation = Get-HuduAssets -AssetLayoutId ($LocationLayout.id ?? 2) -CompanyId $matchedCompany.id |
-                                                Where-Object { Test-NameEquivalent -A $_.name -B $companyContact.location } |
-                                                Select-Object -First 1
-                                               if ($matchedlocation){
-                                $fields+=@{"Location" = "[$($matchedlocation.id)]"}
-                            }
-                        }
-                        $newcontactrequest["Fields"]=$fields
-
                     }
 
+                    if (-not $([string]::IsNullOrWhiteSpace($companyContact.location))){
+                            $matchedlocation = Get-HuduAssets -AssetLayoutId ($LocationLayout.id ?? 2) -CompanyId $matchedCompany.id |
+                                            Where-Object { test-equiv -A $_.name -B $companyContact.location } |
+                                            Select-Object -First 1
+                                        if ($matchedlocation){
+                            $fields+=@{"Location" = "[$($matchedlocation.id)]"}
+                        }
+                    }
 
-
+                    # smoosh extra props to notes
+                    $notes = ""
+                    foreach ($prop in $smooshToNotesProps){
+                        if (-not [string]::IsNullOrWhiteSpace($companyContact.$prop)){
+                            $notes="$notes`n$($prop): $($companyContact.$prop)"
+                        }
+                    }
+                    if (-not [string]::IsNullOrWhiteSpace($notes)){
+                        $fields+=@{"$SmooshPropsTo" ="$notes`n$contactNotes"}
+                    }
                 }
+                # add all fields
+                $newcontactrequest['Fields'] = $fields
 
 
-                try {
-                    $newContact = New-Huduasset @newcontactrequest
-                } catch {
-                    write-host "Error creating location: $_"
+                
+
+
+                    try {
+                        $newContact = New-Huduasset @newcontactrequest
+                    } catch {
+                        write-host "Error creating location: $_"
+                    }
                 }
                 if ($newContact){
                     $ITBoostData.contacts["matches"]+=@{

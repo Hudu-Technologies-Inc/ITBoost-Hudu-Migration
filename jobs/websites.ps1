@@ -1,28 +1,42 @@
+# load companies index if available
+$ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
 # Match or create websites from domains data
 if ($ITBoostData.ContainsKey("domains")){
-    foreach ($row in $ITBoostData.domains.CSVData){
-        if (-not [string]::IsNullOrEmpty(($row.organization))){
-            $matchedCompany = $huduCompanies | where-object {
-                ($_.name -eq $company) -or
-                [bool]$(Test-NameEquivalent -A $_.name -B "$($row.organization)")
-            $matchedCompany = $huduCompanies | Where-Object {
-                $_.name -eq $company -or
-                (Test-NameEquivalent -A $_.name -B "*$($row.organization)*")
-                } | Select-Object -First 1
+    if (-not $ITBoostData.domains.ContainsKey('matches')) { $ITBoostData.domains['matches'] = @() }
+    $allHuduWebsites = Get-HuduWebsites
+    
+    foreach ($row in $($ITBoostData.domains.CSVData | Sort-Object organization -Descending)){
 
-            $matchedCompany = $matchedCompany ?? (Get-HuduCompanies -Name $row.organization | Select-Object -First 1)
+        if (-not [string]::IsNullOrEmpty(($row.organization))){
+            $matchedCompany = Get-HuduCompanyFromName -CompanyName $row.organization -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
         } else {
-            $matchedCompany = Select-Objectfromlist -message "which company has website $($row.name)?" -objects $(get-huducompanies) -allowNull $false
+            #internal
+            $matchedCompany = get-huducompanies -id 5555; $matchedCompany = $matchedCompany.company ?? $matchedCompany;
+        }
+        if ($null -eq $matchedCompany -or $null -eq $matchedCompany.id) {
+            continue
         }
 
         $notes = Get-NotesFromArray -notesInput $($row.notes ?? @())
-        if ($matchedCompany -and -not $MatchedWebsite){
+        $MatchedWebsite=$null
+        $MatchedWebsite=$null
+        $MatchedWebsite = $allHuduWebsites | Where-Object {
+            ($_.name -ilike "*$($row.name)") -and $_.company_id -eq $matchedCompany.id
+        } | Select-Object -First 1
+
+        if ($null -eq $MatchedWebsite){
+            $allHuduWebsites = Get-HuduWebsites
+            $MatchedWebsite = $allHuduWebsites | Where-Object {
+                ($_.name -ilike "*$($row.name)") -and $_.company_id -eq $matchedCompany.id
+            } | Select-Object -First 1
+        }
+        if ($null -eq $MatchedWebsite){
+                Write-Host "No match for website $($row.name) found in Hudu for $($matchedCompany.name)"
                 $newWebsiteRequest=@{
                     Name = "$($($row.name -replace '[\\/]+$', '') -replace '^(?!https://)', 'https://')".Trim()
-                    Notes=$notes; CompanyID=$targetCompany.id
+                    Notes=$notes; CompanyID=$matchedCompany.id
                     DisableSSL='false'; DisableDNS='false'; DisableWhois='false'; EnableDMARC='true'; EnableDKIM='true'; EnableSPF='true';}            
             try {
-                Write-Host "No match for website $($newWebsiteRequest.name), creating now"
                 $newWebsite=New-HuduWebsite @newWebsiteRequest
             } catch {
                 Write-Host "Error during company create $_"
@@ -39,9 +53,10 @@ if ($ITBoostData.ContainsKey("domains")){
                     PasswordsToCreate=$($row.password ?? @())
                 }
             }
+            continue
         } else {
-            Write-Host "Matched website $($matchedCompany.name) to $($row.name)"
-            $ITBoostData.organizations["matches"]+=@{
+            Write-Host "Matched website $($MatchedWebsite.name) to $($row.name)"
+            $ITBoostData.domains["matches"]+=@{
                 CompanyName=$row.organization
                 CsvRow=$row.CsvRow
                 ITBID=$row.id
@@ -50,8 +65,20 @@ if ($ITBoostData.ContainsKey("domains")){
                 HuduObject=$MatchedWebsite
                 HuduCompanyId=$MatchedWebsite.company_id
                 PasswordsToCreate=$($row.password ?? @())
-            }            
+            }
+            continue
         }
     }
 } else {write-host "no websites in CSV! skipping."}
 $allHuduWebsites=Get-HuduWebsites
+$allHuduWebsites | Foreach-Object {write-host "Enabling advanced monitoring features for $($(Set-HuduWebsite -id $_.id -EnableDMARC 'true' -EnableDKIM 'true' -EnableSPF 'true' -DisableDNS 'false' -DisableSSL 'false' -DisableWhois 'false' -Paused 'false').name)" -ForegroundColor DarkCyan}
+
+$ITBoostData.'ssl-certificates'.CSVData | ForEach-Object {
+    $company = $null
+    if ([string]::IsNullOrEmpty($_.organization)) {
+        $company = Get-HuduCompanies -id $internalCompanyId; $company = $company.company ?? $company;
+    } else {
+        $company = Get-HuduCompanies -name $_.organization; $company = $company.company ?? $company;
+    }
+    New-HuduWebsite -Name "https://$($_.host)" -CompanyId $company.id ?? $internalCompanyId -Notes "From ITBoost -SSL"
+ }

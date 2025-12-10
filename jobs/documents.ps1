@@ -3,44 +3,8 @@ $MaxFilesPerRow    = 200  # safety cap
 $AllowConvert = $allowConvert ?? $false
 $URLReplacement = [Collections.Generic.Dictionary[string,string]]::new([StringComparer]::OrdinalIgnoreCase)
 if (-not $pattern) { $pattern = '(?is)(<!doctype\s+html|<html\b|<meta[^>]+charset\s*=\s*["'']?utf-?8|content=["''][^"'']*text/html)' }
-if ($CleanupDupes -and $CleanupDupes -eq $true){
-    Get-HuduArticles |
- Group-Object { '{0}|{1}' -f ($_.company_id ?? -1), (([string]$_.name).Trim() -replace '\s+',' ').ToLower() } |
- Where-Object Count -gt 1 |
- ForEach-Object {
-   $_.Group |
-     Sort-Object `
-       @{Expression={ $d=$_.updated_at ?? $_.created_at; try{[datetime]$d}catch{Get-Date '1900-01-01'} }; Descending=$true}, `
-       @{Expression='id'; Descending=$true} |
-     Select-Object -Skip 1
- } |
- Where-Object { $_.archived -ne $true } |
- ForEach-Object { Remove-HuduArticle -Id $_.id -Confirm:$false }
 
- 
-(Get-HuduUploads) |
- Group-Object {
-   $cid = $_.company_id
-   $nm  = (([string]$_.name).Trim() -replace '\s+',' ').ToLower()
-   if ($cid) { "{0}|{1}" -f $cid,$nm } else { $nm }
- } |
- Where-Object Count -gt 1 |
- ForEach-Object {
-   $_.Group |
-     Sort-Object `
-       @{Expression={ $d=$_.created_at ?? $_.created_date; try{[datetime]$d}catch{Get-Date '1900-01-01'} }; Descending=$true}, `
-       @{Expression='id'; Descending=$true} |
-     Select-Object -Skip 1
- } |
- Where-Object { $_.archived_at -eq $null } |
- ForEach-Object {
-   if (Get-Command Remove-HuduUpload -ErrorAction SilentlyContinue) {
-     Remove-HuduUpload -Id $_.id -Confirm:$false
-   } else {
-     Invoke-HuduRequest -Method delete -Resource "/api/v1/uploads/$($_.id)"
-   }
-}
-}
+if ($CleanupDupes -and $CleanupDupes -eq $true){Clear-DupeDocuments -huduarticles $(get-huduarticles) -huduuploads $(get-huduuploads)}
 $DeleteDocsMode = $DeleteDocsMode ?? $false
 
 function Add-Replacement {
@@ -52,6 +16,9 @@ $sofficePath = $null
 if ($allowConvert -eq $true){
     $sofficePath=$(if ($true -eq $portableLibreOffice) {$(Get-LibrePortable -tmpfolder $tmpfolder)} else {$(Get-LibreMSI -tmpfolder $tmpfolder)})
 }
+
+# load companies index if available
+$ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
 
 if ($ITBoostData.ContainsKey("documents")){
 
@@ -81,39 +48,29 @@ if ($ITBoostData.ContainsKey("documents")){
     foreach ($company in $groupeddocuments.Keys) {
         $documentsForCompany = $groupeddocuments[$company]
         write-host "starting $company with $($documentsForCompany.count) docs"
-        $matchedCompany = $huduCompanies | where-object {
-            ($_.name -eq $company) -or
-            [bool]$(Test-NameEquivalent -A $_.name -B "*$($company)*") -or
-            [bool]$(Test-NameEquivalent -A $_.nickname -B "*$($company)*")} | Select-Object -First 1
-        $matchedCompany = $huduCompanies | Where-Object {
-            $_.name -eq $company -or
-            (Test-NameEquivalent -A $_.name -B "*$company*") -or
-            (Test-NameEquivalent -A $_.nickname -B "*$company*")
-            } | Select-Object -First 1
-
-        $matchedCompany = $matchedCompany ?? (Get-HuduCompanies -Name $company | Select-Object -First 1)
+        $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
 
         if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { continue }
         foreach ($companydocument in $documentsForCompany){
             $matchedDocument = $null
             $matchedDocument = $allHududocuments | Where-Object {
                 $_.company_id -eq $matchedCompany.id -and
-                     $($(Test-NameEquivalent -A $_.name -B $companydocument.name) -or 
+                     $($(test-equiv -A $_.name -B $companydocument.name) -or 
                      $([double]$(Get-SimilaritySafe -A $_.name -B $companydocument.name) -ge 0.90))} | Select-Object -first 1
             $matchedDocument = $matchedDocument ?? $($(Get-HuduArticles -CompanyId $matchedCompany.id -name $companydocument.name) | Select-Object -first 1)
             if ($matcheddocument){
                 Write-Host "matched $($companydocument.name) to doc in Hudu @ $($matchedDocument.url); updating"
-                    # if (-not $ITBoostData.documents.ContainsKey('matches')) { $ITBoostData.documents['matches'] = @() }
-                    # $ITBoostData.documents['matches'] += @{
-                    #     CompanyName      = $companydocument.organization
-                    #     CsvRow           = $companydocument.CsvRow
-                    #     ITBID            = $companydocument.id
-                    #     Name             = $companydocument.name
-                    #     HuduID           = $matcheddocument.id
-                    #     HuduObject       = $matcheddocument
-                    #     HuduCompanyId    = $matcheddocument.company_id
-                    #     PasswordsToCreate= ($companydocument.password ?? @())
-                    # }
+                    if (-not $ITBoostData.documents.ContainsKey('matches')) { $ITBoostData.documents['matches'] = @() }
+                    $ITBoostData.documents['matches'] += @{
+                        CompanyName      = $companydocument.organization
+                        CsvRow           = $companydocument.CsvRow
+                        ITBID            = $companydocument.id
+                        Name             = $companydocument.name
+                        HuduID           = $matcheddocument.id
+                        HuduObject       = $matcheddocument
+                        HuduCompanyId    = $matcheddocument.company_id
+                        PasswordsToCreate= ($companydocument.password ?? @())
+                    }
                     # continue
                 if ($DeleteDocsMode -and $true -eq $DeleteDocsMode){
                     if (-not $matchedDocument -or -not $matchedDocument.id -or $matchedDocument.id -lt 1){continue}
@@ -221,7 +178,7 @@ if ($ITBoostData.ContainsKey("documents")){
                 # $existingRelated = Get-Huduuploads | where-object {$_.uploadable_type -eq "Article" -and [string]$_.uploadable_id -eq [string]$newdocumentrequest["Id"]}
                 # IMAGES
                 foreach ($imageUpload in $imagesNeeded) {
-                    # $existingupload = $existingRelated | where-object {Test-NameEquivalent -A $_.name -B "$([IO.Path]::GetFileName(($imageUpload.File.FullName ?? $imageUpload.File)))".Trim()} | select-object -first 1
+                    # $existingupload = $existingRelated | where-object {test-equiv -A $_.name -B "$([IO.Path]::GetFileName(($imageUpload.File.FullName ?? $imageUpload.File)))".Trim()} | select-object -first 1
                     # if ($existingupload -and $existingupload.url){
                     #     Add-REplacement "$([IO.Path]::GetFileName(($up.File.FullName ?? $up.File)))" $existingupload.url
                     #     write-host "Existing image $($existingupload.url) for $($companydocument.name)"
@@ -244,7 +201,7 @@ if ($ITBoostData.ContainsKey("documents")){
 
                 # NON-IMAGE UPLOADS
                 foreach ($up in $uploadsNeeded) {
-                    # $existingupload = $existingRelated | where-object {Test-NameEquivalent -A $_.name -B "$([IO.Path]::GetFileName(($up.File.FullName ?? $up.File)))".Trim()} | select-object -first 1
+                    # $existingupload = $existingRelated | where-object {test-equiv -A $_.name -B "$([IO.Path]::GetFileName(($up.File.FullName ?? $up.File)))".Trim()} | select-object -first 1
                     # if ($existingupload -and $existingupload.url){
                     #     Add-REplacement "$([IO.Path]::GetFileName(($up.File.FullName ?? $up.File)))" $existingupload.url
                     #     write-host "Existing upload $($existingupload.url) for $($companydocument.name)"

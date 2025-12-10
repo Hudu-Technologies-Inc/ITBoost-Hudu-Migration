@@ -6,7 +6,8 @@ $locations_folder=$(join-path $debug_folder "locations")
 $contacts_folder=$(join-path $debug_folder "contacts")
 $docs_folder=$(join-path $debug_folder "docs")
 $UseSimpleMap = $UseSimpleMap ?? $true
-$=@()
+$SkipInactive = $true
+$removeInactive = $true
 
 
 foreach ($folder in @($debug_folder, $contacts_folder, $locations_folder, $docs_folder)) {
@@ -39,15 +40,16 @@ foreach ($job in @(
 "read-csvs",
 "get-hududata",
 "companies",
-"locations",
+"locations"
 "contacts",
 "websites",
 "configs",
 "expand-configs",
 "documents",
-"attachments",
+"standalone-notes",
+"flexi-layout",
 "passwords",
-,"wrap-up"
+"wrap-up"
 )){
 # foreach ($job in @("get-hududata","read-csvs")){
     $ITBoostData.JobState = @{Status="$job"; StartedAt=$(Get-Date); FinishedAt=$null}

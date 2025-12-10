@@ -38,17 +38,478 @@ $LASTNAME_LABELS  = @('last name','lastname','surname','family name')
 $EMAIL_LABELS     = @('email','e-mail','primary email','work email')
 $PHONE_LABELS     = @('phone','phone number','primary phone','work phone','office phone','mobile','cell','cell phone')
 
-function Get-HuduFieldValue {
-  [CmdletBinding()]
-  param(
-    [Parameter(Mandatory)][object]$Asset,
-    [Parameter(Mandatory)][string[]]$Labels
-  )
-  $labelsLC = $Labels | ForEach-Object { $_.ToLower() }
-  $Asset.fields |
-    Where-Object { $_.label -and $labelsLC -contains ([string]$_.label).ToLower() } |
-    Select-Object -First 1 -ExpandProperty value
+  $FontAwesomeMap=@{
+        "address-book-o"       = "address-book"
+        "address-card-o"       = "address-card"
+        "arrow-circle-o-down"  = "arrow-alt-circle-down"
+        "arrow-circle-o-left"  = "arrow-alt-circle-left"
+        "arrow-circle-o-right" = "arrow-alt-circle-right"
+        "arrow-circle-o-up"    = "arrow-alt-circle-up"
+        "arrows"               = "arrows-alt"
+        "arrows-alt"           = "expand-arrows-alt"
+        "arrows-h"             = "arrows-alt-h"
+        "arrows-v"             = "arrows-alt-v"
+        "bell-o"               = "bell"
+        "bell-slash-o"         = "bell-slash"
+        "bookmark-o"           = "bookmark"
+        "building-o"           = "building"
+        "caret-square-o-right" = "caret-square-right"
+        "check-circle-o"       = "check-circle"
+        "check-square-o"       = "check-square"
+        "circle-o"             = "circle"
+        "circle-thin"          = "circle"
+        "clipboard"            = "clipboard"
+        "cloud-download"       = "cloud-download-alt"
+        "cloud-upload"         = "cloud-upload-alt"
+        "comment-o"            = "comment"
+        "commenting"           = "comment-dots"
+        "commenting-o"         = "comment-dots"
+        "comments-o"           = "comments"
+        "credit-card-alt"      = "credit-card"
+        "cutlery"              = "utensils"
+        "diamond"              = "gem"
+        "envelope-o"           = "envelope"
+        "envelope-open-o"      = "envelope-open"
+        "exchange"             = "exchange-alt"
+        "external-link"        = "external-link-alt"
+        "external-link-square" = "external-link-square-alt"
+        "folder-o"             = "folder"
+        "folder-open-o"        = "folder-open"
+        "file-o"               = "file"
+        "heart-o"              = "heart"
+        "hourglass-o"          = "hourglass"
+        "hand-o-right"         = "hand-point-right"
+        "id-card-o"            = "id-card"
+        "level-down"           = "level-down-alt"
+        "level-up"             = "level-up-alt"
+        "long-arrow-down"      = "long-arrow-alt-down"
+        "long-arrow-left"      = "long-arrow-alt-left"
+        "long-arrow-right"     = "long-arrow-alt-right"
+        "long-arrow-up"        = "long-arrow-alt-up"
+        "map-marker"           = "map-marker-alt"
+        "map-o"                = "map"
+        "minus-square-o"       = "minus-square"
+        "mobile"               = "mobile-alt"
+        "money"                = "money-bill-alt"
+        "paper-plane-o"        = "paper-plane"
+        "pause-circle-o"       = "pause-circle"
+        "pencil"               = "pencil-alt"
+        "play-circle-o"        = "play-circle"
+        "plus-square-o"        = "plus-square"
+        "question-circle-o"    = "question-circle"
+        "share-square-o"       = "share-square"
+        "shield"               = "shield-alt"
+        "sign-in"              = "sign-in-alt"
+        "sign-out"             = "sign-out-alt"
+        "spoon"                = "utensil-spoon"
+        "square-o"             = "square"
+        "star-half-o"          = "star-half"
+        "star-o"               = "star"
+        "sticky-note-o"        = "sticky-note"
+        "stop-circle-o"        = "stop-circle"
+        "tablet"               = "tablet-alt"
+        "tachometer"           = "tachometer-alt"
+        "thumbs-o-down"        = "thumbs-down"
+        "thumbs-o-up"          = "thumbs-up"
+        "ticket"               = "ticket-alt"
+        "times-circle-o"       = "times-circle"
+        "trash"                = "trash-alt"
+        "trash-o"              = "trash-alt"
+        "user-circle-o"        = "user-circle"
+        "user-o"               = "user"
+        "window-close-o"       = "window-close"
+        "calendar"             = "calendar"
+        "reply"                = "reply"
+        "refresh"              = "sync-alt"
+        "window-close"         = "window-close"
+    
+    }
+
+function Get-ValueFromCSVKeyVariants {
+    param(
+        [pscustomobject]$Row,
+        [string]$Label
+    )
+    if ([string]::IsNullOrWhiteSpace($label) -or $null -eq $Row) {return $null}
+
+    $candidates = @(
+        $Label
+        ($Label -replace "_"," ")
+        ($Label -replace " ","_")
+        $Label.Trim()
+        $Label.TrimEnd(':')
+        ($Label.TrimEnd(':') + ':')
+    ) | Where-Object { $_ } | Select-Object -Unique
+
+    $prop = $Row.PSObject.Properties |
+        Where-Object { $candidates -contains $_.Name } |
+        Select-Object -First 1
+    return $prop.Value
 }
+
+
+function Normalize-WebURL {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Url
+    )
+
+    $Url = $Url.Trim()
+    if ([string]::IsNullOrWhiteSpace($Url)) { return $null }
+
+    # 1) UNC paths: \\server\share\path or //server/share/path
+    if ($Url -match '^(\\\\|//)(?<host>[^\\/]+)(?<rest>.*)$') {
+        $parsedHost = $matches.host
+        $rest = $matches.rest -replace '\\','/'
+        $rest = $rest.Trim()
+
+        if ($rest -and -not $rest.StartsWith('/')) {
+            $rest = '/' + $rest
+        }
+
+        $normalized = "https://$parsedHost$rest"
+        return $normalized.TrimEnd('/')
+    }
+
+    # 2) file:// URLs (local or UNC-ish)
+    if ($Url -match '^file://(?<rest>.+)$') {
+        $rest = $matches.rest.TrimStart('\','/')
+        $rest = $rest -replace '\\','/'
+        $normalized = "https://$rest"
+        return $normalized.TrimEnd('/')
+    }
+
+    # 3) Any other scheme: http://, ftp://, whatever://
+    if ($Url -match '^(?<scheme>[a-z][a-z0-9+\-.]*://)(?<rest>.+)$') {
+        $rest = $matches.rest.TrimStart('/')
+        $normalized = "https://$rest"
+        return $normalized.TrimEnd('/')
+    }
+
+    # 4) No scheme at all → assume https://
+    return ("https://$Url").TrimEnd('/','\')
+}
+
+
+function Get-CastIfNumeric {
+    param(
+        [Parameter(Mandatory)]
+        [object]$Value
+    )
+
+    if ($Value -is [string]) {
+        $Value = $Value.Trim()
+    }
+
+    if ($Value -match '^[+-]?\d+(\.\d+)?$') {
+        try {
+            return [int][double]$Value
+        } catch {
+            return 0
+        }
+    }
+    return $Value
+}
+function Test-DateAfter {
+    param(
+        [Parameter(Mandatory)][string]$DateString,
+        [datetime]$Cutoff = [datetime]'1000-01-01'
+    )
+    $dt = $null
+    $ok = [datetime]::TryParseExact(
+        $DateString,
+        'yyyy-MM-dd',
+        [System.Globalization.CultureInfo]::InvariantCulture,
+        [System.Globalization.DateTimeStyles]::AssumeUniversal,
+        [ref]$dt
+    )
+    if (-not $ok) { return $false }   # invalid format → fail
+    return ($dt -ge $Cutoff)
+}
+
+function Get-CoercedDate {
+    param(
+        [Parameter(Mandatory)]
+        [object]$InputDate,  # allow string or [datetime]
+
+        [datetime]$Cutoff = [datetime]'1000-01-01',
+
+        [ValidateSet('DD.MM.YYYY','YYYY.MM.DD','MM/DD/YYYY')]
+        [string]$OutputFormat = 'MM/DD/YYYY'
+    )
+
+    $Inv = [System.Globalization.CultureInfo]::InvariantCulture
+
+    # 1) If it's already a DateTime, trust it
+    if ($InputDate -is [datetime]) {
+        $dt = [datetime]$InputDate
+    }
+    else {
+        $text = "$InputDate".Trim()
+        if ([string]::IsNullOrWhiteSpace($text)) { return $null }
+
+        # 2) Try strict formats first via ParseExact
+        $formats = @(
+            'MM/dd/yyyy HH:mm:ss'
+            'MM/dd/yyyy hh:mm:ss tt'
+            'MM/dd/yyyy'
+        )
+
+        $dt   = $null
+        $ok   = $false
+
+        foreach ($fmt in $formats) {
+            try {
+                $dt = [System.DateTime]::ParseExact($text, $fmt, $Inv)
+                $ok = $true
+                break
+            } catch {
+                # ignore and try next format
+            }
+        }
+
+        # 3) Fallback: general Parse (handles lots of “normal” date strings)
+        if (-not $ok) {
+            try {
+                $dt = [System.DateTime]::Parse($text, $Inv)
+            } catch {
+                return $null
+            }
+        }
+    }
+
+    if ($dt -lt $Cutoff) { return $null }
+
+    switch ($OutputFormat) {
+        'DD.MM.YYYY' { $dt.ToString('dd.MM.yyyy', $Inv) }
+        'YYYY.MM.DD' { $dt.ToString('yyyy.MM.dd', $Inv) }
+        'MM/DD/YYYY' { $dt.ToString('MM/dd/yyyy', $Inv) }
+    }
+}
+
+function Get-NormalizedDropdownOptions {
+  param([Parameter(Mandatory)]$OptionsRaw)
+  $lines =
+    if ($null -eq $OptionsRaw) { @() }
+    elseif ($OptionsRaw -is [string]) { $OptionsRaw -split "`r?`n" }
+    elseif ($OptionsRaw -is [System.Collections.IEnumerable]) { @($OptionsRaw) }
+    else { @("$OptionsRaw") }
+
+  $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  $out = New-Object System.Collections.Generic.List[string]
+  foreach ($l in $lines) {
+    $x = "$l".Trim()
+    if ($x -ne "" -and $seen.Add($x)) { $out.Add($x) }
+  }
+  if ($out.Count -eq 0) { @('None','N/A') } elseif ($out.Count -eq 1) { @('None',$out[0] ?? "N/A") } else { $out.ToArray() }
+}
+
+function Get-SafeFilename {
+    param([string]$Name,
+        [int]$MaxLength=25
+    )
+
+    # If there's a '?', take only the part before it
+    $BaseName = $Name -split '\?' | Select-Object -First 1
+
+    # Extract extension (including the dot), if present
+    $Extension = [System.IO.Path]::GetExtension($BaseName)
+    $NameWithoutExt = [System.IO.Path]::GetFileNameWithoutExtension($BaseName)
+
+    # Sanitize name and extension
+    $SafeName = $NameWithoutExt -replace '[\\\/:*?"<>|]', '_'
+    $SafeExt = $Extension -replace '[\\\/:*?"<>|]', '_'
+
+    # Truncate base name to 25 chars
+    if ($SafeName.Length -gt $MaxLength) {
+        $SafeName = $SafeName.Substring(0, $MaxLength)
+    }
+
+    return "$SafeName$SafeExt"
+}
+function SafeDecode {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [AllowNull()]
+        [object]$InputObject
+    )
+
+    if ($null -eq $InputObject) { return $null }
+
+    if ($InputObject -isnot [string]) {
+        return $InputObject
+    }
+
+    $s = $InputObject.Trim()
+    if ([string]::IsNullOrWhiteSpace($s)) { return $null }
+
+    try {
+        return $s | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        # Not valid JSON; just return the original string
+        return $InputObject
+    }
+}
+
+
+function Get-RelatedFromITBoostUUID {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [object]$inputVal,
+
+        [Parameter(Mandatory)]
+        [hashtable]$ITBoostData
+    )
+
+    if ($null -eq $inputVal) { return $null }
+
+    $decoded = SafeDecode -InputObject $inputVal
+
+    $uuid = $null
+
+    if ($decoded -is [string]) {
+        # Could be a plain UUID string already
+        $uuid = [string]$decoded
+    } else {
+        # PSCustomObject or similar – check known properties
+        if ($decoded.PSObject.Properties.Match('uuid')) {
+            $uuid = [string]$decoded.uuid
+        } elseif ($decoded.PSObject.Properties.Match('id')) {
+            $uuid = [string]$decoded.id
+        } else {
+            # Fallback to string representation if needed
+            $uuid = [string]$decoded
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($uuid)) {
+        return $null
+    }
+
+    foreach ($key in $ITBoostData.Keys |
+                 Where-Object { $ITBoostData[$_].ContainsKey('CSVData') }) {
+
+        $matchedItem = $ITBoostData[$key].CSVData |
+            Where-Object { [string]$_.id -eq $uuid } |
+            Select-Object -First 1
+
+        if ($matchedItem) {
+            return $matchedItem
+        }
+    }
+
+    return $null
+}
+
+
+function Get-CSVProperties {
+    param ([array]$csvRows)
+    return $csvRows |
+        ForEach-Object { $_.PSObject.Properties.Name } |
+        Sort-Object -Unique
+}
+function New-GeneratedTemplateFromFlexiHeaders {
+    param ([array]$ITboostdata, [string]$FlexiLayoutName, [string]$outFile)
+    $flexiProps = Get-CSVProperties $ITboostdata.$FlexiLayoutName.CSVData
+
+    $flexiFieldsLines = @()
+    $flexisMapLines   = @()
+
+    $idx = 0
+
+    foreach ($prop in $flexiProps) {
+        $idx++
+        $label = ($prop -replace '_', ' ')
+        $escapedLabel = $label -replace "'", "''"
+        $escapedProp  = $prop  -replace "'", "''"
+
+        $flexiFieldsLines +=
+            "    @{label = '$escapedLabel'; field_type = 'Text'; show_in_list = 'false'; position = $idx; required = 'false'; hint = '$escapedProp from script'}"
+
+        $flexisMapLines +=
+            "    '$($escapedProp -replace " ","_")' = '$escapedLabel'"
+    }
+
+$TemplateOutput = @"
+`$flexiFields = @(
+$($flexiFieldsLines -join ",`n")
+)
+
+`$flexisMap = @{
+$($flexisMapLines -join "`n")
+}
+"@ + @'
+# smoosh source label items to destination smooshable
+$smooshLabels = @()
+$smooshToDestinationLabel = $null
+$jsonSourceFields = @()
+$nameField = "Name"
+$createNewItemsForLists=$false
+$givenICon = $null; $PasswordsFields = @(); $contstants = @(); $listMaps = @{};
+# relation to doc
+$DocFields = @()
+# general relations
+$RelateditemFields = @()
+$LinkAsPasswords = @();
+'@
+    $TemplateOutput | Set-Content -Path $outFile -Encoding UTF8 -Force
+
+    return $TemplateOutput
+}
+
+function New-GeneratedTemplateFromHuduLayout {
+    param ([pscustomobject]$HuduLayout, [hashtable]$ITboostdata, [string]$SourceProperty, [string]$outFile)
+    $HuduLayout = $HuduLayout.asset_layout ?? $HuduLayout
+    $flexiProps = Get-CSVProperties $ITboostdata.$SourceProperty.CSVData
+
+    $HuduFields = $HuduLayout.fields
+
+    $ReferenceLines = @()
+    $flexisMapLines   = @()
+
+    foreach ($field in $HuduFields) {
+        $ReferenceLines += "# $($field | convertto-json -depth 99) # for reference"
+    }
+    foreach ($prop in $flexiProps) {
+        $escapedProp  = $prop  -replace "'", "''"
+        $flexisMapLines +=
+            "    '$($escapedProp -replace " ","_")' = ' '"
+    }
+
+$TemplateOutput = @"
+# Hudu Destinatio Reference Section
+<#
+$($ReferenceLines -join "`n")
+## Labels-only
+($HuduFields | ForEach-Object {
+    "# - $($_.label) ($($_.field_type))"
+}) -join "`n"
+#>
+
+`$flexisMap = @{
+$($flexisMapLines -join "`n")
+}
+"@ + @'
+# smoosh source label items to destination smooshable
+$smooshLabels = @()
+$smooshToDestinationLabel = $null
+$jsonSourceFields = @()
+$nameField = "Name"
+$createNewItemsForLists=$false
+$givenICon = $null; $PasswordsFields = @(); $contstants = @(); $listMaps = @{};
+# relation to doc
+$DocFields = @()
+# general relations
+$RelateditemFields = @()
+$LinkAsPasswords = @();
+'@
+    $TemplateOutput | Set-Content -Path $outFile -Encoding UTF8 -Force
+
+    return $TemplateOutput
+}
+
 
 function Normalize-Name([string]$s){
   if ([string]::IsNullOrWhiteSpace($s)) { return $null }
@@ -166,6 +627,11 @@ function Find-HuduContact {
   if ($best.Score -ge $ScoreThreshold) { return $best.Asset } else { return $null }
 }
 
+function ChoseBest-ByName {
+    param ([string]$Name,[array]$choices)
+return $($choices | ForEach-Object {
+[pscustomobject]@{Choice = $_; Score  = $(Get-SimilaritySafe -a "$Name" -b $_.name);}} | where-object {$_.Score -ge 0.98} | Sort-Object Score -Descending | select-object -First 1).Choice
+}
 function Normalize-Text {
     param([string]$s)
     if ([string]::IsNullOrWhiteSpace($s)) { return $null }
@@ -487,6 +953,8 @@ function Test-LetterRatio {
     }
 }
 
+
+
 function Test-IsHtml {
     [CmdletBinding()]
     param(
@@ -745,7 +1213,7 @@ function Get-NormalizedVariants {
     return $variants
 }
 
-function Test-NameEquivalent {
+function test-equiv {
     param([string]$A, [string]$B)
 
     $va = Get-NormalizedVariants $A
@@ -809,6 +1277,8 @@ function Test-MostlyDigits([object]$v){
 }
 # map a target label to a canonical family (quick & simple)
 
+
+
 function Test-IsLocationLayoutName {
   param([string]$Name)
   foreach ($v in (Get-NormalizedVariants -Text $Name)) {
@@ -827,38 +1297,6 @@ foreach ($term in $locationSeed) {
   foreach ($v in (Get-NormalizedVariants -Text $term)) {
     $null = $PossibleLocationNames.Add($v)
   }
-}
-function New-HuduAddress {
-    param([Parameter(Mandatory)][object]$Input)
-
-    # Parse JSON strings; pass through objects
-    $o = if ($Input -is [string]) { try { $Input | ConvertFrom-Json } catch { $null } } else { $Input }
-    if (-not $o) { return $null }
-
-    # Helper to grab the first present alias
-    $first = {
-        param($obj, [string[]]$names)
-        foreach ($n in $names) { if ($obj.PSObject.Properties.Name -contains $n) { return $obj.$n } }
-        return $null
-    }
-
-    $addr1 = & $first $o @('address_line_1','address1','address_1','line1','street','street1','address')
-    $addr2 = & $first $o @('address_line_2','address2','address_2','line2','street2')
-    $city           = & $first $o @('city','town')
-    $state          = & $first $o @('state','province','region')
-    $zip            = & $first $o @('zip','zipcode','postal','postal_code')
-    $cntry   = & $first $o @('country_name','country')
-    if ($addr1 -or $addr2 -or $city -or $state -or $zip -or $cntry) {
-    $NewAddress = [ordered]@{
-        address_line_1 = $addr1
-        city           = $city
-        state          = $state
-        zip            = $zip
-        country_name   = $cntry
-    }
-    if ($addr2) { $NewAddress['address_line_2'] = $addr2 }
-    return $NewAddress
-    } else {return $null}
 }
 
 function Get-NeedlePresentInHaystack {
@@ -932,77 +1370,7 @@ function Get-PhonesFromRow($row) {
     ForEach-Object { ($_ -replace '[^\d\+xX#]','').Trim() } |
     Sort-Object -Unique
 }
-function Resolve-LocationForCompany {
-  param(
-    [Parameter(Mandatory)][int]$CompanyId,
-    [Parameter(Mandatory)]$Row,
-    [Parameter(Mandatory)]$AllHuduLocations,
-    [string[]]$Hints
-  )
 
-  # If $Hints can be null at call-time, set a safe default here (avoid default param expr that depends on external vars)
-  if (-not $Hints) { $Hints = @('location','branch','office','site','building') }
-
-  $candKeys = @()
-  foreach ($prop in $Row.PSObject.Properties) {
-    $propName = $prop.Name
-    if ($Hints.Where({ param($h) (Test-Fuzzy $propName $h) }, 'First')) {
-      $candKeys += $propName
-    }
-  }
-  $candKeys = $candKeys | Sort-Object -Unique
-
-  $candVals = @()
-  foreach ($k in $candKeys) {
-    $v = $Row.$k
-    if ($null -ne $v -and "$v".Trim()) { $candVals += "$v" }
-  }
-  if (-not $candVals) { return $null }
-
-  $companyLocs = $AllHuduLocations | Where-Object { $_.company_id -eq $CompanyId }
-  foreach ($cv in $candVals) {
-    $hit = $companyLocs | Where-Object { Test-NameEquivalent -A $_.name -B $cv } | Select-Object -First 1
-    if ($hit) { return $hit }
-  }
-  return $null
-}
-function Get-ListItemFuzzy {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)][string]$Source,
-        [Parameter(Mandatory)][int]$ListId,
-        [double]$MinSimilarity = 0.65   # tweak as needed
-    )
-
-    if ([string]::IsNullOrWhiteSpace($Source)) { return $null }
-
-    $list = Get-HuduLists -Id $ListId
-    if (-not $list -or -not $list.list_items) { return $null }
-
-    $sNorm = Normalize-Text $Source
-
-    $bestItem  = $null
-    $bestScore = -1.0
-
-    foreach ($item in $list.list_items) {
-        $name = [string]$item.name
-        if ([string]::IsNullOrWhiteSpace($name)) { continue }
-        $nNorm = Normalize-Text $name
-
-        $score = if ($nNorm -eq $sNorm) { 1.0 } else { Get-Similarity $name $Source }
-        if ($nNorm.StartsWith($sNorm) -or $sNorm.StartsWith($nNorm)) {
-            $score = [Math]::Min(1.0, $score + 0.02)
-        }
-
-        if ($score -gt $bestScore) {
-            $bestScore = $score
-            $bestItem  = $item
-        }
-    }
-
-    if ($bestScore -lt $MinSimilarity) { return $null }
-    return $bestItem
-}
 
 function Get-SynonymBag {
     [CmdletBinding()]
@@ -1064,33 +1432,7 @@ function Build-FieldsFromRow {
         
       }
 
-    #   if ($field.field_type -eq "AssetTag"){
-    #     if (-not $field.linkable_id -or $field.linkable_id -lt 1){continue}
-    #         $layoutForLinking = Get-HuduAssetLayouts -id $field.linkable_id
-    #         $possiblyLinkedAssets=Get-HuduAssets -CompanyId $companyId -id $field.linkable_id
-    #         $bag = Get-FieldSynonymsSimple -TargetLabel $layoutForLinking.name -IncludeVariants
-    #         $val = Find-RowValueByLabel -TargetLabel $label -Row $Row -SynonymBag $bag -fieldType $field.field_type
-    #         $bestItem  = $null
-    #         $bestScore = -1.0            
-    #         if ($val){
-    #             foreach ($asset in $possiblyLinkedAssets) {
-    #                 $name = [string]$asset.name
-    #                 if ([string]::IsNullOrWhiteSpace($name)) { continue }
-    #                 $nNorm = Normalize-Text $name
-    #                 $score = if ($nNorm -eq $sNorm) { 1.0 } else { Get-Similarity $name $val }
-    #                 if ($nNorm.StartsWith($sNorm) -or $sNorm.StartsWith($nNorm)) {
-    #                     $score = [Math]::Min(1.0, $score + 0.02)
-    #                 }
-    #                 if ($score -gt $bestScore) {
-    #                     $bestScore = $score
-    #                     $bestItem  = $asset
-    #                 }
-    #             }
-    #         }
-    #         if ($bestItem -and $bestitem.id){ $val = $bestItem.id } else {continue}
-    #         Write-Host "Matched Asset Tag field $label to $($layoutForLinking.name) asset $($bestItem.name) with score of $($bestScore)"
-    #   }
-      # special case addressdata
+
       if ($field.field_type -eq "AddressData"){
         $tmpVal=Build-FieldsFromRow -Row $Row -LayoutFields @(
             @{label = "address_line_1"},

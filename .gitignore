@@ -9,3 +9,5 @@ debug
 *.env
 *environment*.ps1
 *environ*.ps1
+mappings-*.*
+*mappings*

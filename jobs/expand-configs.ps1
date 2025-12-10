@@ -43,7 +43,7 @@ function Build-RowMergedMap {
       $candidate = $r.$csvKey
       if ($null -eq $candidate) {
         # try a loose fallback: search by case-insensitive property name
-        $prop = ($r.PSObject.Properties | Where-Object { Test-NameEquivalent -A $_.Name -B $csvKey }).Value
+        $prop = ($r.PSObject.Properties | Where-Object { test-equiv -A $_.Name -B $csvKey }).Value
         $candidate = $prop
       }
 
@@ -73,6 +73,9 @@ $FieldsAsArrays = @(
     "hostname",
     "configuration_interfaces"
 )
+
+# load companies index if available
+$ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
 
 if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHaveBeenApplied){
     $namesSeen = @()   
@@ -128,12 +131,7 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
 
         Write-Host "starting $company"
 
-        $matchedCompany = $huduCompanies | Where-Object {
-            ($_.name -eq $company) -or
-            [bool](Test-NameEquivalent -A $_.name     -B "*$company*") -or
-            [bool](Test-NameEquivalent -A $_.nickname -B "*$company*")
-        } | Select-Object -First 1
-        $matchedCompany = $matchedCompany ?? (Get-HuduCompanies -Name $company | Select-Object -First 1)
+        $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
         if (-not $matchedCompany.id) { Write-Host "NO COMPANY matched for $company"; continue }
 
         $groupsForCompany = $ByCompanyById[$company]
@@ -149,7 +147,7 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
             $individual = $rows[0]
 
             $matchedConfig = $allHuduConfigs |
-                Where-Object { $_.company_id -eq $matchedCompany.id -and (Test-NameEquivalent -A $_.name -B $individual.name) } |
+                Where-Object { $_.company_id -eq $matchedCompany.id -and (test-equiv -A $_.name -B $individual.name) } |
                 Select-Object -First 1
             $matchedConfig = $matchedConfig ?? (Get-HuduAssets -AssetLayoutId $configsLayout.id -CompanyId $matchedCompany.id -Name $individual.name | Select-Object -First 1)
 
@@ -224,7 +222,7 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
             if (@("ALL","RichText-Field") -contains $ConfigExpansionMethod){
                 $fieldsRequest=@()
                 foreach ($f in $configsLayout.fields | where-object {$_.label -ne $ConfigsRichTextOverviewField}){
-                    $value = $($matchedconfig.fields | where-object {Test-NameEquivalent -A $_.label -B $f.label} | Select-Object -First 1)?.value ?? $null
+                    $value = $($matchedconfig.fields | where-object {test-equiv -A $_.label -B $f.label} | Select-Object -First 1)?.value ?? $null
                     $value = $value ?? $(Build-RowMergedMap -ConfigsMap $configsMap -Rows $rows)["$($f.label)"]
                     if ($null -ne $value){
                     

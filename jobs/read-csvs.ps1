@@ -1,4 +1,4 @@
-$CSVFiles= Get-ChildItem -Path $ITBoostExportPath -Recurse -File -Filter "*.csv"
+$CSVFiles= Get-ChildItem -Path $ITBoostExportPath -Recurse -depth 2 -File -Filter "*.csv"
 foreach ($f in $CSVFiles){
     try {
         $csvData=$(Import-Csv $f.FullName | Select-Object @{Name='CsvRow'; Expression={ $i++ }}, *)
@@ -14,3 +14,14 @@ foreach ($f in $CSVFiles){
         }
     }
 }
+
+
+# $allProps=@()
+# $uniqueProps=@()
+# foreach ($key in $itboostdata.keys){
+#     $Props = Get-CSVProperties $itboostdata.$key.csvdata
+#     if ($props -eq $null -or $props.count -lt 1){continue}
+#     $allProps+=$props
+# }
+# $uniqueProps = $allProps | select-object -unique
+# $uniqueProps | Sort-Object | format-list -force

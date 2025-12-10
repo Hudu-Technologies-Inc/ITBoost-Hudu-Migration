@@ -6,6 +6,9 @@ $PassProps = @{
   server        = "Url"            # many cmdlets use Url, not URL
 }
 
+# load companies index if available
+$ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
+
 if ($ITBoostData.ContainsKey("passwords")) {
   $passwords = $ITBoostData.passwords.CSVData | Group-Object { $_.organization } -AsHashTable -AsString
 
@@ -13,24 +16,14 @@ if ($ITBoostData.ContainsKey("passwords")) {
 
   foreach ($company in $passwords.Keys) {
     Write-Host "starting $company"
-    $matchedCompany = $huduCompanies | Where-Object { $_.name -eq $company} | Select-Object -first 1
-
-    $matchedCompany = $matchedCompany ?? ($huduCompanies | Where-Object {
-      ($_.name -eq $company) -or
-      [bool](Test-NameEquivalent -A $_.name     -B "*$company*") -or
-      [bool](Test-NameEquivalent -A $_.nickname -B "*$company*")
-    } | Select-Object -First 1)
-
-    $matchedCompany = $matchedCompany ?? (Get-HuduCompanies -Name $company | Select-Object -First 1)
-
-    $matchedCompany = $matchedCompany.company ?? $matchedCompany
-
+    $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
     Write-Host "Matched to company $($matchedCompany.name)"
     if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { 
-            $createdcompany = New-HuduCompany -Name "$($company)".Trim()
-            $matchedcompany = Get-HuduCompanies -id $createdcompany.idtools
-            $matchedCompany = $matchedCompany.company ?? $matchedCompany
-         write-host "created company $($matchedCompany.name)"
+        continue
+        #     $createdcompany = New-HuduCompany -Name "$($company)".Trim()
+        #     $matchedcompany = Get-HuduCompanies -id $createdcompany.idtools
+        #     $matchedCompany = $matchedCompany.company ?? $matchedCompany
+        #  write-host "created company $($matchedCompany.name)"
      }
 
     $companyPasswords = Get-HuduPasswords -CompanyId $matchedCompany.id
@@ -39,9 +32,9 @@ if ($ITBoostData.ContainsKey("passwords")) {
 
     foreach ($companyPass in $passwords[$company]) {
       # try to find an existing password by name
-      $matchedPassword = $companyPasswords | Where-Object { Test-NameEquivalent -A $_.name -B $companyPass.name } | Select-Object -First 1
-      $matchedAsset    = $companyAssets   | Where-Object { Test-NameEquivalent -A $_.name -B $companyPass.name } | Select-Object -First 1
-      $matchedWebsite  = $companyWebsites | Where-Object { Test-NameEquivalent -A $_.name -B ($companyPass.server ?? $companyPass.name) } | Select-Object -First 1
+      $matchedPassword = $companyPasswords | Where-Object { test-equiv -A $_.name -B $companyPass.name } | Select-Object -First 1
+      $matchedAsset    = $companyAssets   | Where-Object { test-equiv -A $_.name -B $companyPass.name } | Select-Object -First 1
+      $matchedWebsite  = $companyWebsites | Where-Object { test-equiv -A $_.name -B ($companyPass.server ?? $companyPass.name) } | Select-Object -First 1
 
       $NewPasswordRequest = @{
         Name      = "$($companyPass.name)".Trim()

@@ -1,25 +1,7 @@
+$huducompanies = $huduCompanies ?? $(get-huducompanies)
 if ($ITBoostData.ContainsKey("organizations")){
     foreach ($row in $ITBoostData.organizations.CSVData){
-        $matchedCompany = $huduCompanies | where-object {
-            ($_.name -eq $row.name) 
-            # -or [bool]$(Test-NameEquivalent -A $_.name -B "*$($row.name)*") 
-            #-or [bool]$(Test-NameEquivalent -A $_.name -B "*$($row.short_name)*") 
-            #-or [bool]$(Test-NameEquivalent -A $_.nickname -B "*$($row.name)*") 
-            # -or [bool]$(Test-NameEquivalent -A $_.nickname -B "*$($row.short_name)*")
-        } | Select-Object -First 1
-        $matchedCompany = $matchedCompany ?? $(Get-HuduCompanies -name "$($row.name)")
-        # $matchedCompany = $matchedCompany ?? $(Get-HuduCompanies -name "$($row.short_name)")
-        # $matchedCompany = $matchedCompany ?? $($huduCompanies | where-object {[double]$(Get-SimilaritySafe -A $_.Name -b $row.name)})
-        # if (-not $matchedCompany){
-        #     $minSimilarity = 0.825
-        #     $matchedCompany =
-        #     $huduCompanies
-        #     | Select-Object *, @{n='Score'; e={ [double](Get-SimilaritySafe -A $_.Name -B $row.name) }}
-        #     | Sort-Object Score -Descending
-        #     | Where-Object Score -ge $minSimilarity
-        #     | Select-Object -First 1
-        #     if ($matchedCompany){write-host "Fuzzy-Matched company $($row.name) to $($matchedCompany.name) with minimum certainty of $minsimilarity"}
-        # }
+        $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
         if ($matchedCompany){
             Write-Host "Matched company $($matchedCompany.name) to $($row.name)"
             $ITBoostData.organizations["matches"]+=@{
@@ -30,7 +12,19 @@ if ($ITBoostData.ContainsKey("organizations")){
                 HuduID=$matchedCompany.id
                 PasswordsToCreate=$($row.password ?? @())
             }
+            if ($row.organization_status -ieq "Inactive") {
+                if ($true -eq $SkipInactive){
+                    Write-Host "Setting company $($matchedCompany.name) to Inactive"
+                    Set-HuduCompanyArchive -id $matchedCompany.id -Archive $true -Confirm:$false
+                } else {
+                    Write-Host "Notice: Inactive org (matched in hudu)- $($row.name)" 
+                }            } 
+            continue
         } else {
+            if ($row.organization_status -ieq "Inactive") {
+                Write-Host "Notice: Inactive org- $($row.name)"
+                if ($true -eq $SkipInactive){continue}
+            }
             $newCompanyRequest = @{
                 Name=$row.name
             }
@@ -61,3 +55,4 @@ if ($ITBoostData.ContainsKey("organizations")){
     }
 } else {write-host "No organizations data found, cannot proceed."; exit 1}
 $huduCompanies = Get-HuduCompanies
+$ITBoostData.organizations["matches"] | convertto-json -depth 99 | out-file $companiesIndex -Force
