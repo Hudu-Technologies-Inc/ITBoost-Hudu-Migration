@@ -27,7 +27,7 @@ $ConfigurationsHaveBeenApplied=$false
 $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
 
 if ($ITBoostData.ContainsKey("configurations")){
-
+    if (-not $ITBoostData.configurations.ContainsKey('matches')) { $ITBoostData.configurations['matches'] = @() }
     $huduCompanies = $huduCompanies ?? $(get-huducompanies)
 
     $configsLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "config" -haystack $_.name) -or $($_.name -ilike "config*")) } | Select-Object -First 1; $configsLayout = $configsLayout.asset_layout ?? $configsLayout

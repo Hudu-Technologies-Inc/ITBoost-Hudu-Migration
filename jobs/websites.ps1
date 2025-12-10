@@ -2,6 +2,7 @@
 $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
 # Match or create websites from domains data
 if ($ITBoostData.ContainsKey("domains")){
+    if (-not $ITBoostData.domains.ContainsKey('matches')) { $ITBoostData.domains['matches'] = @() }
     $allHuduWebsites = Get-HuduWebsites
     
     foreach ($row in $($ITBoostData.domains.CSVData | Sort-Object organization -Descending)){
@@ -41,32 +42,30 @@ if ($ITBoostData.ContainsKey("domains")){
                 Write-Host "Error during company create $_"
             }
             if ($newWebsite){
-                # $ITBoostData.domains["matches"]+=@{
-                #     CsvRow=-1
-                #     ITBID=$row.id
-                #     Name=$row.name
-                #     HuduID=$newWebsite.id
-                #     HuduObject=$newWebsite
-                #     CompanyName=$row.organization
-                #     HuduCompanyId=$newWebsite.company_id
-                #     PasswordsToCreate=$($row.password ?? @())
-                # }
+                $ITBoostData.domains["matches"]+=@{
+                    CsvRow=-1
+                    ITBID=$row.id
+                    Name=$row.name
+                    HuduID=$newWebsite.id
+                    HuduObject=$newWebsite
+                    CompanyName=$row.organization
+                    HuduCompanyId=$newWebsite.company_id
+                    PasswordsToCreate=$($row.password ?? @())
+                }
             }
             continue
         } else {
-                Write-Host "match for website $($row.name) found in Hudu for $($matchedCompany.name)"
-
-            # Write-Host "Matched website $($MatchedWebsite.name) to $($row.name)"
-            # $ITBoostData.organizations["matches"]+=@{
-            #     CompanyName=$row.organization
-            #     CsvRow=$row.CsvRow
-            #     ITBID=$row.id
-            #     Name=$row.name
-            #     HuduID=$MatchedWebsite.id
-            #     HuduObject=$MatchedWebsite
-            #     HuduCompanyId=$MatchedWebsite.company_id
-            #     PasswordsToCreate=$($row.password ?? @())
-            # }
+            Write-Host "Matched website $($MatchedWebsite.name) to $($row.name)"
+            $ITBoostData.domains["matches"]+=@{
+                CompanyName=$row.organization
+                CsvRow=$row.CsvRow
+                ITBID=$row.id
+                Name=$row.name
+                HuduID=$MatchedWebsite.id
+                HuduObject=$MatchedWebsite
+                HuduCompanyId=$MatchedWebsite.company_id
+                PasswordsToCreate=$($row.password ?? @())
+            }
             continue
         }
     }

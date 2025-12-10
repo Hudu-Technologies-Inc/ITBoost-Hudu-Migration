@@ -116,6 +116,7 @@ function Build-HuduContactIndex {
 $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
 
 if ($ITBoostData.ContainsKey("contacts")){
+    if (-not $ITBoostData.contacts.ContainsKey('matches')) { $ITBoostData.contacts['matches'] = @() }
     $contactsLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "contact" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "people" -Haystack $_.name)) } | Select-Object -First 1
     if (-not $contactsLayout){
         $contactsLayout=$(New-HuduAssetLayout -name "contacts" -Fields @(
@@ -166,8 +167,6 @@ if ($ITBoostData.ContainsKey("contacts")){
                     Write-Host "Matched $humanName to $($matchedcontact.name) for $($matchedCompany.name)"
 
                     # ensure the array exists once
-                    if (-not $ITBoostData.contacts.ContainsKey('matches')) { $ITBoostData.contacts['matches'] = @() }
-
                     $ITBoostData.contacts['matches'] += @{
                         CompanyName      = $companyContact.organization
                         CsvRow           = $companyContact.CsvRow

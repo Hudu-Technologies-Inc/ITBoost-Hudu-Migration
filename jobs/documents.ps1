@@ -60,17 +60,17 @@ if ($ITBoostData.ContainsKey("documents")){
             $matchedDocument = $matchedDocument ?? $($(Get-HuduArticles -CompanyId $matchedCompany.id -name $companydocument.name) | Select-Object -first 1)
             if ($matcheddocument){
                 Write-Host "matched $($companydocument.name) to doc in Hudu @ $($matchedDocument.url); updating"
-                    # if (-not $ITBoostData.documents.ContainsKey('matches')) { $ITBoostData.documents['matches'] = @() }
-                    # $ITBoostData.documents['matches'] += @{
-                    #     CompanyName      = $companydocument.organization
-                    #     CsvRow           = $companydocument.CsvRow
-                    #     ITBID            = $companydocument.id
-                    #     Name             = $companydocument.name
-                    #     HuduID           = $matcheddocument.id
-                    #     HuduObject       = $matcheddocument
-                    #     HuduCompanyId    = $matcheddocument.company_id
-                    #     PasswordsToCreate= ($companydocument.password ?? @())
-                    # }
+                    if (-not $ITBoostData.documents.ContainsKey('matches')) { $ITBoostData.documents['matches'] = @() }
+                    $ITBoostData.documents['matches'] += @{
+                        CompanyName      = $companydocument.organization
+                        CsvRow           = $companydocument.CsvRow
+                        ITBID            = $companydocument.id
+                        Name             = $companydocument.name
+                        HuduID           = $matcheddocument.id
+                        HuduObject       = $matcheddocument
+                        HuduCompanyId    = $matcheddocument.company_id
+                        PasswordsToCreate= ($companydocument.password ?? @())
+                    }
                     # continue
                 if ($DeleteDocsMode -and $true -eq $DeleteDocsMode){
                     if (-not $matchedDocument -or -not $matchedDocument.id -or $matchedDocument.id -lt 1){continue}
