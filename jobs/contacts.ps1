@@ -41,15 +41,24 @@ title = "Title"
 $smooshToNotesProps = @("notes","resource_type","contact_type","relationship","additional_contact_items")
 $SmooshPropsTo = "Notes"
 
-#             @{label        = 'first Name'; field_type   = 'Text'; show_in_list = 'true'; position     = 1},
-#             @{label        = 'Last Name'; field_type   = 'Text'; show_in_list = 'false';position     = 2},
-#             @{label        = 'Title'; field_type   = 'Text'; show_in_list = 'true'; position     = 3},
-#             @{label        = 'Contact Type'; field_type   = 'Text'; show_in_list = 'true'; position     = 4},
-#             @{label        = 'Location'; field_type   = 'AssetTag'; show_in_list = 'false';linkable_id  = $LocationLayout.ID; position     = 5},
-#             @{label        = 'Important'; field_type   = 'Text'; show_in_list = 'false';position     = 6},
-#             @{label        = 'Notes'; field_type   = 'RichText'; show_in_list = 'false';position     = 7},
-#             @{label        = 'Emails'; field_type   = 'RichText'; show_in_list = 'false';position     = 8},
-#             @{label        = 'Phones'; field_type   = 'RichText'; show_in_list = 'false';position     = 9}
+# additional_contact_items
+# companyUuid
+# contact_type
+# CsvRow
+# first_name
+# id
+# last_name
+# location
+# notes
+# organization
+# password
+# primary_email
+# primary_phone
+# relationship
+# resource_id
+# resource_type
+# title
+# types
 
 # Status
 # Email Address
@@ -119,16 +128,31 @@ if ($ITBoostData.ContainsKey("contacts")){
     if (-not $ITBoostData.contacts.ContainsKey('matches')) { $ITBoostData.contacts['matches'] = @() }
     $contactsLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "contact" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "people" -Haystack $_.name)) } | Select-Object -First 1
     if (-not $contactsLayout){
+        $StatusList = Get-HuduLists | Where-Object {$_.name -ieq "People Status" -or $_.name -ieq "Contact Status"} | Select-Object -First 1
+        $statusList = $StatusList ?? $(new-hudulist -name "People Status" -items @("ACTIVE", "INACTIVE (DO NOT SERVICE)", "Leave", "Terminated", "Onboarding"))
+        $StatusList = $StatusList.list ?? $StatusList
+
+        $contactList = Get-HuduLists | Where-Object {$_.name -ieq "People Preferred Communications" -or $_.name -ieq "Preferred Communications"} | Select-Object -First 1
+        $contactList = $contactList ?? $(new-hudulist -name "People Preferred Communications" -items @("Office Phone","Cell Phone","Email","Text"))
+        $contactList = $contactList.list ?? $contactList
+
+        $genderList = Get-HuduLists | Where-Object {$_.name -ilike "Gender" -or $_.name -ilike "Sex"} | Select-Object -First 1
+        $genderList = $genderList ?? $(new-hudulist -name "Gender" -items @("Male","Female","Non-Binary","Other","Prefer Not to Say"))
+        $genderList = $genderList.list ?? $genderList        
+
         $contactsLayout=$(New-HuduAssetLayout -name "contacts" -Fields @(
-            @{label        = 'first Name'; field_type   = 'Text'; show_in_list = 'true'; position     = 1},
-            @{label        = 'Last Name'; field_type   = 'Text'; show_in_list = 'false';position     = 2},
-            @{label        = 'Title'; field_type   = 'Text'; show_in_list = 'true'; position     = 3},
-            @{label        = 'Contact Type'; field_type   = 'Text'; show_in_list = 'true'; position     = 4},
-            @{label        = 'Location'; field_type   = 'AssetTag'; show_in_list = 'false';linkable_id  = $LocationLayout.ID; position     = 5},
-            @{label        = 'Important'; field_type   = 'Text'; show_in_list = 'false';position     = 6},
-            @{label        = 'Notes'; field_type   = 'RichText'; show_in_list = 'false';position     = 7},
-            @{label        = 'Emails'; field_type   = 'RichText'; show_in_list = 'false';position     = 8},
-            @{label        = 'Phones'; field_type   = 'RichText'; show_in_list = 'false';position     = 9}
+        @{label="Status";   show_in_list=$false;   field_type="ListSelect";required=$false;   multiple_options=$true;list_id=$StatusList.id;   position=1},
+        @{label="Email Address";   show_in_list=$false;   field_type="Email";required=$false;   hint="";   position=2},
+        @{label="Office Phone number (DID)";   show_in_list=$false;   field_type="Phone";required=null;   hint="";   position=4},
+        @{label="Cell Phone Number";   show_in_list=$false;   field_type="Phone";required=$false;   hint="";   position=5},
+        @{label="Preferred Communications";   show_in_list=$false;   field_type="ListSelect";required=$false;   hint="";   multiple_options=$true;list_id=$contactList.id;   position=6},
+        @{label="Gender";   show_in_list=$false;   field_type="ListSelect";required=$false;   hint="";   multiple_options=$true;list_id=$genderList.id;   position=7},
+        @{label="Title";   show_in_list=$false;   field_type="Text";required=$false;   hint="Title / Job Description";   position=8},
+        @{label="Accept Text?";   show_in_list=$false;   field_type="CheckBox";required=$false;   hint="Can we text the user?";   position=10},
+        @{label="Workstation used";   show_in_list=$false;   field_type="Text";required=$false;   hint="What workstation is used?";   position=11},
+        @{label="Notes";   show_in_list=$false;   field_type="RichText";required=$false;   hint="";   position=12},
+        @{label="IP Address of Primary Computer";   show_in_list=$false;   field_type="Website";required=$false;   hint="";   linkable_id=5;   position=13},
+        @{label="Location";   show_in_list=$true;   field_type="AssetTag";required=$false;   hint="";   linkable_id=$LocationLayout.id;   multiple_options=$false;list_id=4;   position=14}
         ) -Icon "fas fa-users" -IconColor "#ffffff" -Color "#6136ff" -IncludePasswords $true -IncludePhotos $true -IncludeComments $true -IncludeFiles $true).asset_layout
         $contactsLayout = Get-HuduAssetLayouts -id $contactsLayout.id
     }
@@ -146,7 +170,7 @@ if ($ITBoostData.ContainsKey("contacts")){
         write-host "starting $company"
         $contactsForCompany = $groupedContacts[$company]
         $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
-        if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { continue }
+        if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) {write-host "skipping $company due to no match"; continue;}
         foreach ($companyContact in $contactsForCompany){
             $matchedContact = Find-HuduContact `
             -CompanyId  $matchedCompany.id `
@@ -193,7 +217,7 @@ if ($ITBoostData.ContainsKey("contacts")){
                 } else {
 
 
-                    foreach ($key in $ContactsMap.Keys | where-object {$_ -ne "location"}) {
+                    foreach ($key in $ContactsMap.Keys | where-object {$_ -ne "location"} ) {
                         # pull value from CSV row
                         $rowVal = $companyContact.$key ?? $null
                         if ($null -eq $rowVal) { continue }

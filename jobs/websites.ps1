@@ -11,7 +11,7 @@ if ($ITBoostData.ContainsKey("domains")){
             $matchedCompany = Get-HuduCompanyFromName -CompanyName $row.organization -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
         } else {
             #internal
-            $matchedCompany = get-huducompanies -id 5555; $matchedCompany = $matchedCompany.company ?? $matchedCompany;
+            continue
         }
         if ($null -eq $matchedCompany -or $null -eq $matchedCompany.id) {
             continue
