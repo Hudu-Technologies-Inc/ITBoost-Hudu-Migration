@@ -105,3 +105,5 @@ foreach ($r in $runbooks) {
     }
     $newRunbooks+=$newRunbook
 }
+
+$newRunbooks | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "RunbooksArticles.json")) -Force
