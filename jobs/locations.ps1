@@ -42,6 +42,7 @@ $huduCompanies = $huduCompanies ?? $(get-huducompanies)
 $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
 
 if ($ITBoostData.ContainsKey("locations")){
+    if (-not $ITBoostData.locations.ContainsKey('matches')) { $ITBoostData.locations['matches'] = @() }
 
     $LocationLayout = Get-HuduAssetLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "location" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "locations" -Haystack $_.name)) } | Select-Object -First 1
 
@@ -81,15 +82,15 @@ if ($ITBoostData.ContainsKey("locations")){
             $matchedlocation = $allHuduLocations | where-object {$_.company_id -eq $matchedCompany.id -and  $($(test-equiv -A $_.name -B $companyLocation.name) -or $(test-equiv -A $companyLocation.address_1 -B $($_.fields | where-object {$_.label -ilike "address"} | select-object -first 1).value))} | select-object -first 1
             if ($matchedLocation){
                 Write-Host "Matched $($companyLocation.name) to $($matchedlocation.name) for $($matchedCompany.name)"
-                # $ITBoostData.locations["matches"]+=@{
-                #     CompanyName=$companyLocation.organization
-                #     CsvRow=$companyLocation.CsvRow
-                #     ITBID=$companyLocation.id
-                #     HuduID=$MatchedWebsite.id
-                #     HuduObject=$MatchedWebsite
-                #     HuduCompanyId=$MatchedWebsite.company_id
-                #     PasswordsToCreate=$($companyLocation.password ?? @())
-                # }
+                $ITBoostData.locations["matches"]+=@{
+                    CompanyName=$companyLocation.organization
+                    CsvRow=$companyLocation.CsvRow
+                    ITBID=$companyLocation.id
+                    HuduID=$MatchedWebsite.id
+                    HuduObject=$MatchedWebsite
+                    HuduCompanyId=$MatchedWebsite.company_id
+                    PasswordsToCreate=$($companyLocation.password ?? @())
+                }
             } else {
                 $NewAddressRequest=@{
                     Name=$companyLocation.name
@@ -138,24 +139,28 @@ if ($ITBoostData.ContainsKey("locations")){
 
 
                 try {
+                    $newLocation = $null
                     $newLocation = New-Huduasset @NewAddressRequest
+                    $newLocation = $newLocation.asset ?? $newLocation
                 } catch {
                     write-host "Error creating location: $_"
                 }
                 if ($newLocation){
-                    # $ITBoostData.locations["matches"]+=@{
-                    #     CompanyName=$companyLocation.organization
-                    #     CsvRow=$companyLocation.CsvRow
-                    #     ITBID=$companyLocation.id
-                    #     Name=$companyLocation.name
-                    #     HuduID=$newLocation.id
-                    #     HuduObject=$newLocation
-                    #     HuduCompanyId=$newLocation.company_id
-                    #     PasswordsToCreate=$($companyLocation.password ?? @())
-                    # }            
+                    $ITBoostData.locations["matches"]+=@{
+                        CompanyName=$companyLocation.organization
+                        CsvRow=$companyLocation.CsvRow
+                        ITBID=$companyLocation.id
+                        Name=$companyLocation.name
+                        HuduID=$newLocation.id
+                        HuduObject=$newLocation
+                        HuduCompanyId=$newLocation.company_id
+                        PasswordsToCreate=$($companyLocation.password ?? @())
+                    }            
                 }
             }
         }
     }
 } else {write-host "no locations in CSV! skipping."}
     $allHuduLocations = Get-HuduAssets -AssetLayoutId $LocationLayout.id
+
+$ITBoostData.locations["matches"] | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "MatchedLocations.json")) -Force

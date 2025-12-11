@@ -86,6 +86,7 @@ foreach ($company in $uniqueCompanies) {
     foreach ($companyConfig in $configsForCompany) {
 
         # Find existing config
+        $matchedConfig = $null
         $matchedConfig = get-huduassets -AssetLayoutId $configsLayout.id -CompanyId $matchedCompany.id |
             Where-Object {
                 (test-equiv -A $_.name -B $companyConfig.name)
@@ -98,9 +99,18 @@ foreach ($company in $uniqueCompanies) {
             AssetLayoutId = $configsLayout.id
         }
 
-        if ($matchedConfig) {
-            $newConfigRequest['Id'] = $matchedConfig.id
-            continue
+        if ($null -ne $matchedConfig) {
+                    $ITBoostData.configurations['matches'] += @{
+                        CompanyName      = $companyConfig.organization
+                        CsvRow           = $companyConfig.CsvRow
+                        ITBID            = $companyConfig.id
+                        Name             = $(($companyConfig.name).Trim())
+                        HuduID           = $matchedConfig.id
+                        HuduObject       = $matchedConfig
+                        HuduCompanyId    = $matchedConfig.company_id
+                        PasswordsToCreate= ($companyConfig.password ?? @())
+                    }
+                    continue
         }
 
         # Build fields from map (excluding location/name)
@@ -139,19 +149,35 @@ foreach ($company in $uniqueCompanies) {
         $newConfigRequest['Fields'] = $fields
 
         try {
+            $huduconfig = $null
             if ($newConfigRequest.Id) {
                 Write-Host "updating with $($newConfigRequest | ConvertTo-Json -Depth 5)"
-                $null = Set-HuduAsset @newConfigRequest
+                $huduconfig = Set-HuduAsset @newConfigRequest
             } else {
                 Write-Host "creating with $($newConfigRequest | ConvertTo-Json -Depth 5)"
-                $created = New-HuduAsset @newConfigRequest
+                $huduconfig = New-HuduAsset @newConfigRequest
                 if ($created) { $allHuduConfigs += $created }
             }
         } catch {
             Write-Host "Error upserting config '$($newConfigRequest.Name)' for '$($matchedCompany.name)': $_"
         }
+        if ($null -ne $huduconfig) {
+            $ITBoostData.configurations['matches'] += @{
+                CompanyName      = $companyConfig.organization
+                CsvRow           = $companyConfig.CsvRow
+                ITBID            = $companyConfig.id
+                Name             = $(($companyConfig.name).Trim())
+                HuduID           = $huduconfig.id
+                HuduObject       = $huduconfig
+                HuduCompanyId    = $huduconfig.company_id
+                PasswordsToCreate= ($companyConfig.password ?? @())
+            }
+        }
+
     }
     $ConfigurationsHaveBeenApplied=$true
 }
 
 }
+
+$ITBoostData.configurations["matches"] | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "MatchedConfigurations.json")) -Force

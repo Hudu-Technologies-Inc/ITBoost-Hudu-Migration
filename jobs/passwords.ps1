@@ -11,6 +11,7 @@ $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ??
 
 if ($ITBoostData.ContainsKey("passwords")) {
   $passwords = $ITBoostData.passwords.CSVData | Group-Object { $_.organization } -AsHashTable -AsString
+  if (-not $ITBoostData.passwords.ContainsKey('matches')) { $ITBoostData.passwords['matches'] = @() }
 
   try { $null = Get-HuduPasswords -ErrorAction Stop } catch { } # warm the pipe
 
@@ -20,10 +21,6 @@ if ($ITBoostData.ContainsKey("passwords")) {
     Write-Host "Matched to company $($matchedCompany.name)"
     if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { 
         continue
-        #     $createdcompany = New-HuduCompany -Name "$($company)".Trim()
-        #     $matchedcompany = Get-HuduCompanies -id $createdcompany.idtools
-        #     $matchedCompany = $matchedCompany.company ?? $matchedCompany
-        #  write-host "created company $($matchedCompany.name)"
      }
 
     $companyPasswords = Get-HuduPasswords -CompanyId $matchedCompany.id
@@ -43,7 +40,16 @@ if ($ITBoostData.ContainsKey("passwords")) {
 
       if ($matchedPassword) {
         Write-Host "matched existing password: $($matchedPassword.name)"
-        $NewPasswordRequest["Id"] = $matchedPassword.id
+                    $ITBoostData.passwords["matches"]+=@{
+                        CompanyName=$companyPass.organization
+                        CsvRow=$companyPass.CsvRow
+                        ITBID=$companyPass.id
+                        Name=$matchedPassword.name
+                        HuduID=$matchedPassword.id
+                        HuduObject=$matchedPassword
+                        HuduCompanyId=$matchedPassword.company_id
+                    }            
+        continue
       }
 
       if     ($matchedAsset)   { $asset = $matchedAsset.asset ?? $matchedAsset; $NewPasswordRequest.passwordable_id = $asset.id;          $NewPasswordRequest.passwordable_type = "Asset"   }
@@ -58,7 +64,7 @@ if ($ITBoostData.ContainsKey("passwords")) {
       }
 
       Write-Host ($NewPasswordRequest | ConvertTo-Json -Depth 99)
-
+      $newPass = $null
       try {
         if ($NewPasswordRequest.ContainsKey("Id") -and $NewPasswordRequest["Id"] -gt 0) {
           $newpass = Set-HuduPassword @NewPasswordRequest -ErrorAction Stop
@@ -73,6 +79,19 @@ if ($ITBoostData.ContainsKey("passwords")) {
         Write-Host "Error creating/updating password:"
         $_ | Format-List * -Force | Out-String | Write-Host
       }
+      if ($newpass) {
+        $newpass = $newpass.asset_password ?? $newpass
+        $ITBoostData.passwords["matches"]+=@{
+            CompanyName=$companyPass.organization
+            CsvRow=$companyPass.CsvRow
+            ITBID=$companyPass.id
+            Name=$newpass.name
+            HuduID=$newpass.id
+            huduCompanyId = $newPass.id
+            HuduObject=$newpass
+        }
+      }
+
     }
   }
 }

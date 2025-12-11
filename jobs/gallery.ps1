@@ -2,7 +2,7 @@
 # preload company matches
 $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
 get-ensuredpath -path $TMPbasedir | Out-Null
-$newArticles = @()
+$galleryItems = @()
 if (-not $ITBoostData.ContainsKey("gallery")){write-host "No data for gallery"; exit 1}
 
 foreach ($galleryitem in $ITBoostData.gallery.CSVData) {
@@ -66,6 +66,8 @@ foreach ($galleryitem in $ITBoostData.gallery.CSVData) {
         Write-Host "Failed to create article for gallery item $($galleryitem.name), skipping"
         continue
     }
-    $newArticles+=$newArticle
+    $galleryItems+=$newArticle
 
 }
+
+$galleryItems | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "GalleryItems.json")) -Force

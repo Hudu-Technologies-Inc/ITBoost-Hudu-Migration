@@ -60,6 +60,8 @@ if ($usingExistingLayout -and $existingLayout) {
 } else {    
     $flexisLayout = $allHuduLayouts | Where-Object { $_.name -eq $FlexiLayoutName } | Select-Object -First 1
 }
+if (-not $ITBoostData.$sourceProperty.ContainsKey('matches')) { $ITBoostData.$sourceProperty['matches'] = @() }
+
 $flexisLayout = $flexisLayout.asset_layout ?? $flexisLayout
 if (-not $flexisLayout){
     $GivenIcon = try {$($FontAwesomeMap[$($FontAwesomeMap.Keys | Where-Object {$_ -ilike "*$sourceProperty*" -or $_ -ilike "*$FlexiLayoutName*"} | select-object -first 1)])} catch {"fas fa-boxes"}
@@ -114,7 +116,6 @@ foreach ($company in $groupedflexis.Keys) {
         $matchedflexi = Get-HuduAssets -AssetLayoutId $flexisLayout.id -CompanyId $matchedCompany.id -Name $($companyflexi.$nameField ?? $companyFlexi.name) |
                             Select-Object -First 1
     
-        if ($matchedflexi){continue} 
         $GivenName = $null
         $AltLabel = $nameField -replace "_"," "                
         $GivenName = $($companyflexi.$nameField ?? $companyflexi.$AltLabel ?? $companyflexi.name)
@@ -126,10 +127,18 @@ foreach ($company in $groupedflexis.Keys) {
         $GivenName = $(if ([string]::IsNullOrWhiteSpace($GivenName)) { "Unnamed $sourceProperty" } else { $GivenName })
         $matchedflexi = Get-HuduAssets -AssetLayoutId $flexisLayout.id -CompanyId $matchedCompany.id -Name $GivenName | Select-Object -First 1                
         if ($matchedflexi){
-            write-host "Skipping creation of $GivenName as it already exists."
-            continue
-        }
-        
+                    $ITBoostData.$sourceProperty['matches'] += @{
+                        CompanyName      = $companyflexi.organization
+                        CsvRow           = $companyflexi.CsvRow
+                        ITBID            = $companyflexi.id
+                        Name             = $GivenName
+                        HuduID           = $matchedflexi.id
+                        HuduObject       = $matchedflexi
+                        HuduCompanyId    = $matchedflexi.company_id
+                        PasswordsToCreate= ($companyflexi.password ?? @())
+                    }
+                    continue
+        } 
         $newflexirequest=@{
             Name=$givenName
             CompanyID = $matchedCompany.id
@@ -262,6 +271,11 @@ foreach ($company in $groupedflexis.Keys) {
         write-host "Error creating $FlexiLayoutName from $sourceProperty- $_"
     }
     if ($null -ne $newFlexi){
+        $docsLinked = @()
+        $assetsRelated = @()
+        $passwordsLinked = @()
+
+        # Link documents
         foreach ($doc in $DocFields){
             $DocName = Safedecode $companyflexi.$doc
             $DocName = $DocName.name ?? $DocName.value ?? $null
@@ -270,8 +284,14 @@ foreach ($company in $groupedflexis.Keys) {
             $article = Get-HuduArticles -CompanyId $matchedCompany.id -name $DocName | Select-Object -first 1
             $article = $article.article ?? $article
             if ($null -eq $article -or $null -eq $article.id ){continue}
-            New-HuduRelation -FromableType "Asset" -ToableType "Article" -FromableID $newFlexi.id -ToableID $article.id
+            $r = New-HuduRelation -FromableType "Asset" -ToableType "Article" -FromableID $newFlexi.id -ToableID $article.id
+            $r = $r.relation ?? $r
+            if ($null -ne $r -and $null -ne $r.id){
+                $docsLinked+= $r
+            }
         }
+
+        # link related assets
         foreach ($related in $RelateditemFields) {
             $itemName = Safedecode $companyflexi.$related
             $itemName = $itemName.name ?? $itemName.value ?? $null
@@ -281,7 +301,11 @@ foreach ($company in $groupedflexis.Keys) {
             foreach ($r in $related){
                 $asset = $r.asset ?? $asset
                 if ($null -eq $asset -or $null -eq $asset.id ){continue}
-                New-HuduRelation -FromableType "Asset" -ToableType "Asset" -FromableID $newFlexi.id -ToableID $asset.id
+                $r = New-HuduRelation -FromableType "Asset" -ToableType "Asset" -FromableID $newFlexi.id -ToableID $asset.id
+                $r = $r.relation ?? $r
+                if ($null -ne $r -and $null -ne $r.id){
+                    $assetsRelated+= $r
+                }                
             }
         }
         foreach ($eligiblepassField in $LinkAsPasswords) {
@@ -299,14 +323,34 @@ foreach ($company in $groupedflexis.Keys) {
             $existingpass = get-hudupasswords -CompanyId $matchedCompany.id -name $givenName | Select-Object -first 1
             $existingpass=$existingpass.asset_password ?? $existingpass
             if ($null -ne $existingpass -and $null -ne $existingpass.id){$passrequest["Id"]=$existingpass.id}
+            $p = $null
             if ($passrequest.ContainsKey("Id") -and $null -ne $passrequest.id){
-                Set-HuduPassword @passrequest
-            } else {New-HuduPassword @passrequest}
+                $p = Set-HuduPassword @passrequest
+            } else {
+                $p = New-HuduPassword @passrequest
+            }
+            $p = $p.asset_password ?? $p
+            if ($null -ne $p -and $null -ne $p.id){
+                $passwordsLinked+= $p
+            }
+        }
+        $ITBoostData.$sourceProperty['matches'] += @{
+            CompanyName      = $companyflexi.organization
+            CsvRow           = $companyflexi.CsvRow
+            ITBID            = $companyflexi.id
+            Name             = $GivenName
+            HuduID           = $newflexi.id
+            HuduObject       = $newflexi
+            HuduCompanyId    = $newflexi.company_id
+            PasswordsToCreate= ($companyflexi.password ?? @())
+            docsLinked       = $docsLinked
+            assetsRelated    = $assetsRelated
+            passwordsLinked  = $passwordsLinked
         }
 
+
     }
-
-
-    
     }
 }
+
+$ITBoostData.$sourceProperty["matches"] | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "Matched-flex-$($sourceProperty).json")) -Force

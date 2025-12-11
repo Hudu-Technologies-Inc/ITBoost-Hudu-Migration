@@ -59,6 +59,7 @@ foreach ($r in $runbooks){
     } else {
         $matchedCompany = $internalCompany
     }
+    $matchedCompany = $matchedCompany.company ?? $matchedCompany
     write-host "creating article for company $($matchedCompany.name) -"
     try {
         $newRunbook = Set-HuduArticleFromResourceFolder -resourcesFolder $dest -companyName $matchedCompany.name -title $docName

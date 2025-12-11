@@ -21,6 +21,7 @@ if ($allowConvert -eq $true){
 $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
 
 if ($ITBoostData.ContainsKey("documents")){
+    if (-not $ITBoostData.documents.ContainsKey('matches')) { $ITBoostData.documents['matches'] = @() }
 
     $groupeddocuments = $ITBoostData.documents.CSVData | Group-Object { $_.organization } -AsHashTable -AsString
     try {
@@ -250,3 +251,4 @@ if ($ITBoostData.ContainsKey("documents")){
         }
     }
 }
+$ITBoostData.documents["matches"] | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "MatchedDocuments.json")) -Force
