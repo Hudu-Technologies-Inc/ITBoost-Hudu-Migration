@@ -16,52 +16,93 @@ if (-not $(test-path $runbooksFolder)){
     exit 1
 }
 $runbooks = Get-ChildItem -Path $runbooksFolder -Directory
-write-host "$($runbooks.count) runbooks folders found without CSV data, processing from filesystem"
-foreach ($r in $runbooks){
-    write-host "processing runbook: $($r.name)"
-    $docFile = $null; $images = $null;
-    $docFile = Get-ChildItem -Path $r.FullName -Recurse -File |
-                Where-Object { $_.Extension -match '\.md|\.markdown|\.html|\.htm|\.txt' } |
-                Select-Object -First 1
-    if (-not $docFile){
-        write-host "No document file found in runbook $($r.name), skipping"
+Write-Host "$($runbooks.Count) runbook folders found without CSV data, processing from filesystem"
+
+foreach ($r in $runbooks) {
+    Write-Host "Processing runbook: $($r.Name)"
+
+    $docFiles = Get-ChildItem -Path $r.FullName -Recurse -File |
+        Where-Object { $_.Extension -match '^\.(html?|txt)$' } |
+        Sort-Object FullName
+
+    if (-not $docFiles) {
+        Write-Host "No document file found in runbook $($r.Name), skipping"
         continue
     }
+
     $uuid = [guid]::NewGuid().ToString()
+    $dest = Join-Path $TMPbasedir ("rb-" + $uuid)
+    Get-EnsuredPath -Path $dest | Out-Null
 
-    $childFolder = get-childitem -Path $r.FullName -Directory | select-object -first 1
-    $docName = "$(Get-SafeFilename -MaxLength 65 -Name "Runbook $($childFolder.name)")" -replace "Untitled","Untitled $($($uuid -split "-")[0])"
-    write-host "Doc will be titled $docname"
-    $images = Get-ChildItem -Path $r.FullName -Recurse -File |
-                Where-Object { $_.Extension -match '\.png|\.jpg|\.jpeg' }
-    write-host "RB has docfile $docFile and $($images.count) images"
-
-    $dest = Join-Path $TMPbasedir ("rb-" + $uuid)    
-    get-ensuredpath -path $dest | Out-Null
-
-    copy-item -path $docFile.FullName -destination (Join-Path $dest $docFile.Name) -force
-    foreach ($img in $images){
-        copy-item -path $img.FullName -destination (Join-Path $dest $img.Name) -force
+    $childFolder = (Get-ChildItem -Path $r.FullName -Directory | Select-Object -ExpandProperty Name) -join " - "
+    if ([string]::IsNullOrWhiteSpace($childFolder)) {
+        $childFolder = $r.Name
     }
-    if ($false -eq $alwaysInternal){
-        $matchedRecord = $null
-        $matchedRecord = $itboostdata.rb.csvdata | where-object {"$($_.id)" -ieq "$($r.name)"} | select-object -first 1
-        if ($null -ne $matchedRecord){
-            $matchedCompany = $internalCompany
+
+    $docName = Get-SafeFilename -MaxLength 65 -Name "Runbook $childFolder"
+    $docName = $docName -replace "Untitled","Untitled $($($uuid -split '-')[0])"
+    Write-Host "Doc will be titled $docName"
+
+    $images = Get-ChildItem -Path $r.FullName -Recurse -File |
+        Where-Object { $_.Extension -match '^\.(png|jpe?g)$' }
+    $nonEmptyImages = $images | Where-Object { $_.Length -gt 0 }
+    $emptyImages = $images | Where-Object { $_.Length -eq 0 }
+    $images = $nonEmptyImages
+
+    Write-Host "RB $docName has $($docFiles.Count) docfiles and $($images.Count) images"
+
+    # combine docs
+    $chunks = @()
+    $docIdx = 0
+    foreach ($doc in $docFiles) {
+        $docIdx++
+        $header = "<h1>Doc $docIdx- $($doc.Name)</h1>`n<hr>`n"
+        $htmlRaw = Get-Content -Path $doc.FullName -Raw
+        # $body   = Demote-HtmlHeadings -html $htmlRaw -levels 1
+        $chunks += @($header, $htmlRaw)
+    }
+    if ($emptyImages.count -gt 0) {
+        Write-Host "$($emptyImages.count) empty images were skipped"
+        $chunks+=@("<p><em>Import Note: $($emptyImages.count) empty image files were skipped during import. filenames: $($emptyImages.Name -join ', ')</em></p>")
+    }
+
+    $combinedDoc = ($chunks -join "`n`n").Trim()
+
+    Set-Content -Value $combinedDoc -Path (Join-Path $dest "rb-doc.html") -Force
+
+    foreach ($img in $images) {
+        Copy-Item -Path $img.FullName -Destination (Join-Path $dest $img.Name) -Force
+    }
+
+    # company matching unchanged, just possibly cleaned up
+    if (-not $alwaysInternal) {
+        $matchedRecord = $itboostdata.rb.csvdata |
+            Where-Object { "$($_.id)" -ieq "$($r.Name)" } |
+            Select-Object -First 1
+
+        if ($null -ne $matchedRecord) {
+            if ($matchedRecord.organization -ieq "Global"){
+                $matchedCompany = $internalCompany
+            } else {
+                Write-Host "CSV indicates runbook $($r.Name) is linked to company $($matchedRecord.organization), attempting to match"
+                $matchedCompany = Get-HuduCompanyFromName -CompanyName $matchedRecord.organization -HuduCompanies $huduCompanies -existingIndex ($ITBoostData.organizations["matches"] ?? $null)
+            }
         } else {
-            write-host "csv indicates that runbook $($r.name) is linked to company $($matchedRecord.organization), attempting to match"
-            $matchedCompany = Get-HuduCompanyFromName -CompanyName $matchedRecord.organization -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
+            $matchedCompany = $internalCompany
         }
-        if (-not $matchedCompany){
-            write-host "No matching company found for runbook $($r.name), assigning to internal company $($internalCompany.name)"
+
+        if (-not $matchedCompany) {
+            Write-Host "No matching company found for runbook $($r.Name), assigning to internal company $($internalCompany.Name)"
             $matchedCompany = $internalCompany
         }
     } else {
         $matchedCompany = $internalCompany
     }
+
     $matchedCompany = $matchedCompany.company ?? $matchedCompany
-    write-host "creating article for company $($matchedCompany.name) -"
+    Write-Host "Creating article for company $($matchedCompany.Name) - $docName"
     try {
+        $newRunbook =$null
         $newRunbook = Set-HuduArticleFromResourceFolder -resourcesFolder $dest -companyName $matchedCompany.name -title $docName
     } catch {
         Write-Host "Error creating article for runbook $($docName): $_"
@@ -73,3 +114,5 @@ foreach ($r in $runbooks){
     }
     $newRunbooks+=$newRunbook
 }
+
+$newRunbooks | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "RunbooksArticles.json")) -Force
