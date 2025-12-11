@@ -4,17 +4,38 @@ $LocationsMap = @{
 fax = "Special Information"
 notes = "Notes"
 phone = "Front Desk Phone Number"
+
 }
 # addressdata field for address
-# custom layout
-# Location - AddressData
-# Primary POC - AssetTag
-# Front Desk Phone Number - Phone
-# Office Email - Email
-# Hours of Operation - Text
-# Door Code - Text
-# Special Information - Text
-# Notes - RichText
+# Location
+# Primary POC
+# Front Desk Phone Number
+# Office Email
+# Hours of Operation
+# Door Code
+# Special Information
+# Notes
+
+# address_1
+# address_2
+# city
+# country
+# CsvRow
+# fax
+# id
+# name
+# notes
+# organization
+# password
+# phone
+# postal_code
+# primary
+# region
+# resource_id
+# resource_type
+
+
+
 
 $huduCompanies = $huduCompanies ?? $(get-huducompanies)
 # load companies index if available
@@ -26,15 +47,14 @@ if ($ITBoostData.ContainsKey("locations")){
 
     if (-not $LocationLayout){
         $locationlayout=$(New-HuduAssetLayout -name "location" -Fields @(
-            @{label        = 'Address 1'; field_type   = 'Text'; show_in_list = 'true'; position     = 1},
-            @{label        = 'Address 2'; field_type   = 'Text'; show_in_list = 'false'; position     = 2},
-            @{label        = 'City'; field_type   = 'Text'; show_in_list = 'true'; position     = 3},
-            @{label        = 'Postal Code'; field_type   = 'Text'; show_in_list = 'true'; position     = 4},
-            @{label        = 'Region'; field_type   = 'Text'; show_in_list = 'false'; position     = 5},
-            @{label        = 'Country'; field_type   = 'Text'; show_in_list = 'false'; position     = 6},
-            @{label        = 'Phone'; field_type   = 'Text'; show_in_list = 'false'; position     = 7},
-            @{label        = 'Fax'; field_type   = 'Text'; show_in_list = 'false'; position     = 8},
-            @{label        = 'Notes'; field_type   = 'RichText'; show_in_list = 'false'; position     = 9}
+            @{label= "Location"; "show_in_list"=$false; field_type="AddressData"; required=$false; hint=""; position=1},
+            @{label= "Primary POC"; "show_in_list"=$false; field_type="AssetTag"; required=$false; hint=""; position=2},
+            @{label= "Front Desk Phone Number"; "show_in_list"=$false; field_type="Phone"; required=$false; hint=""; position=3},
+            @{label= "Office Email"; "show_in_list"=$false; field_type="Email"; required=$false; hint=""; position=4},
+            @{label= "Hours of Operation"; "show_in_list"=$false; field_type="Text"; required=$false; hint=""; position=5},
+            @{label= "Door Code"; "show_in_list"=$false; field_type="Text"; required=$null; hint=""; position=6},
+            @{label= "Special Information"; "show_in_list"=$false; field_type="Text"; required=$false; hint=""; position=7},
+            @{label= "Notes"; "show_in_list"=$false; field_type="RichText"; required=$false; hint=""; position=8}
         ) -Icon "fas fa-building" -IconColor "#ffffff" -Color "#6136ff" -IncludePasswords $true -IncludePhotos $true -IncludeComments $true -IncludeFiles $true).asset_layout
         $LocationLayout = Get-HuduAssetLayouts -id $LocationLayout.id
     }

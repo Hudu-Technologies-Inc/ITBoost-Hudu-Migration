@@ -38,19 +38,19 @@ $ITBoostData=@{
 
 foreach ($job in @(
 "read-csvs",
-"get-hududata",
-"companies",
-"locations"
-"contacts",
-"websites",
-"configs",
-"expand-configs",
-"documents",
-"standalone-notes",
-"flexi-layout",
-"passwords",
-"gallery",
-"wrap-up"
+"get-hududata"
+# "companies"
+# "locations"
+# "contacts",
+# "websites"
+# "configs",
+# "expand-configs",
+# "documents"
+# "standalone-notes",
+# "flexi-layout"
+# "passwords",
+# "gallery",
+# "wrap-up"
 )){
 # foreach ($job in @("get-hududata","read-csvs")){
     $ITBoostData.JobState = @{Status="$job"; StartedAt=$(Get-Date); FinishedAt=$null}
