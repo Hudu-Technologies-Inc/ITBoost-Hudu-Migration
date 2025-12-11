@@ -21,3 +21,12 @@ $webByName = $(Get-HuduWebsites | Group-Object { $_.name.ToLowerInvariant() })
         Remove-HuduWebsite -Id $w.id -Confirm:$false
      }
  }
+
+
+
+foreach ($inactiveOrg in $itboostdata.organizations.csvdata | where-object {$_.organization_status -ilike "Inactive"}){
+    $matchedCompany = Get-HuduCompanyFromName -CompanyName $inactiveOrg.name -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
+    if (-not $matchedCompany) {continue}
+    write-host "Deactivating company $($matchedCompany.name) as per ITBoost data"
+    # Set-HuduCompanyArchive -id $matchedCompany.id -archive $true -Confirm:$false
+}
