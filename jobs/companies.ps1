@@ -1,5 +1,7 @@
 $huducompanies = $huduCompanies ?? $(get-huducompanies)
 if ($ITBoostData.ContainsKey("organizations")){
+    if (-not $ITBoostData.organizations.ContainsKey('matches')) { $ITBoostData.organizations['matches'] = @() }
+
     foreach ($row in $ITBoostData.organizations.CSVData){
         $matchedCompany=$null
         $matchedCompany = Get-HuduCompanyFromName -CompanyName $row.name -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
@@ -8,22 +10,18 @@ if ($ITBoostData.ContainsKey("organizations")){
             $ITBoostData.organizations["matches"]+=@{
                 CompanyName=$row.name
                 HuduCompany=$matchedCompany
-                CsvRow=$row.CsvRow
                 ITBID=$row.id
                 HuduID=$matchedCompany.id
-                PasswordsToCreate=$($row.password ?? @())
             }
             if ($row.organization_status -ieq "Inactive") {
-                if ($true -eq $SkipInactive){
-                    Write-Host "Setting company $($matchedCompany.name) to Inactive"
-                    Set-HuduCompanyArchive -id $matchedCompany.id -Archive $true -Confirm:$false
-                } else {
-                    Write-Host "Notice: Inactive org (matched in hudu)- $($row.name)" 
-                }            } 
+                if ($true -eq $SkipInactive){continue}
+
+                Write-Host "Setting company $($matchedCompany.name) to Inactive"
+                Set-HuduCompanyArchive -id $matchedCompany.id -Archive $true -Confirm:$false
+            } 
             continue
         } else {
             if ($row.organization_status -ieq "Inactive") {
-                Write-Host "Notice: Inactive org- $($row.name)"
                 if ($true -eq $SkipInactive){continue}
             }
             $newCompanyRequest = @{
@@ -38,15 +36,16 @@ if ($ITBoostData.ContainsKey("organizations")){
             if (-not [string]::IsNullOrEmpty($row.zip)){$newCompanyRequest["Zip"] = $row.zip}
             if (-not [string]::IsNullOrEmpty($row.country)){$newCompanyRequest["Country"] = $row.country}
             try {
+                $newCompany = $null
                 $newCompany=New-HuduCompany @newCompanyRequest
+                $newCompany = $newCompany.company ?? $newCompany
+                write-host "Created new company $($newCompany.name) with ID $($newCompany.id)"
                 if ($newCompany){
                     $ITBoostData.organizations["matches"]+=@{
-                        CsvRow=-1
                         ITBID=$row.id
                         HuduID=$newCompany.id
                         CompanyName=$row.name
                         HuduCompany=$newCompany
-                        PasswordsToCreate=$($row.password ?? @())
                     }
                 }
             } catch {

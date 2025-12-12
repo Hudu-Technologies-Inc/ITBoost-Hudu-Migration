@@ -96,7 +96,7 @@ if ($ITBoostData.ContainsKey("documents")){
                 $imagesCreated = @()
                 $uploadsAdded  = @()
                 $firstHtml = $null
-                $OutFile = "$docs_folder\$($companydocument.resource_id).html"
+                $OutFile = "$debug_folder\$($companydocument.resource_id).html"
 
                 
                 $newdocumentrequest=@{

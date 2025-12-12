@@ -1,4 +1,8 @@
-$HuduBaseURL=""
-$HuduAPIKey=""
-$ITBoostExportPath=""
+$HuduBaseURL="yoururl.huducloud.com"
+$HuduAPIKey="huduapikey"
+$ITBoostExportPath="X:\yourexportpath"
+$TMPbasedir="X:\designatedpersistenttempdir"
+
+$DeleteDocsMode = $false
+$UseSimpleMap = $true
 . .\migrate-itboost-hudu.ps1

@@ -108,7 +108,6 @@ foreach ($company in $uniqueCompanies) {
                         HuduID           = $matchedConfig.id
                         HuduObject       = $matchedConfig
                         HuduCompanyId    = $matchedConfig.company_id
-                        PasswordsToCreate= ($companyConfig.password ?? @())
                     }
                     continue
         }
@@ -170,7 +169,6 @@ foreach ($company in $uniqueCompanies) {
                 HuduID           = $huduconfig.id
                 HuduObject       = $huduconfig
                 HuduCompanyId    = $huduconfig.company_id
-                PasswordsToCreate= ($companyConfig.password ?? @())
             }
         }
 

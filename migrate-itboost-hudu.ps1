@@ -1,19 +1,14 @@
 $project_workdir=$project_workdir ?? $PSScriptRoot
 $toolsPath = resolve-path .\tools\
 $project_workdir=$PSScriptRoot
-$debug_folder=$(join-path "$project_workdir" "debug")
-$locations_folder=$(join-path $debug_folder "locations")
-$contacts_folder=$(join-path $debug_folder "contacts")
-$docs_folder=$(join-path $debug_folder "docs")
-$UseSimpleMap = $UseSimpleMap ?? $true
+$debug_folder=$debug_folder ?? $(join-path "$project_workdir" "debug")
+$companiesIndex =  $(join-path $debug_folder -ChildPath "MatchedCompanies.json")
+
+$UseSimpleMap = $true
 $SkipInactive = $true
-$removeInactive = $true
 
 
-foreach ($folder in @($debug_folder, $contacts_folder, $locations_folder, $docs_folder)) {
-    if (!(Test-Path -Path "$folder")) { New-Item "$folder" -ItemType Directory }
-}
-$ITBoostExportPath=$ITBoostExportPath ?? "C:\tmp\ITBoost"
+$ITBoostExportPath=$ITBoostExportPath ?? "$(read-host "enter ITBoost export path")"
 while (-not $(test-path $ITBoostExportPath)){
     $ITBoostExportPath=$(read-host "please specify your ITBoost export path and make sure it contains csvs!")
     if ($(test-path $ITBoostExportPath)){break}
@@ -24,6 +19,7 @@ foreach ($file in $(Get-ChildItem -Path ".\helpers" -Filter "*.ps1" -File | Sort
     Write-Host "Importing: $($file.Name)" -ForegroundColor DarkBlue
     . $file.FullName
 }
+foreach ($requiredpath in @($TMPbasedir, $debug_folder)){Get-EnsuredPath -path $requiredpath}
 Get-PSVersionCompatible; Get-HuduModule; Set-HuduInstance; Get-HuduVersionCompatible;
 
 if ($null -eq $UseSimpleMap){$UseSimpleMap = $true}
@@ -38,19 +34,20 @@ $ITBoostData=@{
 
 foreach ($job in @(
 "read-csvs",
-"get-hududata"
-# "companies"
-# "locations"
-# "contacts",
-# "websites"
-# "configs",
-# "expand-configs",
-# "documents"
-# "standalone-notes",
-# "flexi-layout"a
-# "passwords",
-# "gallery",
-# "wrap-up"
+"get-hududata",
+"companies",
+"locations",
+"contacts",
+"websites",
+"configs",
+"expand-configs",
+"documents",
+"runbooks",
+"standalone-notes",
+"gallery",
+# "flexi-layout"
+"passwords",
+"wrap-up"
 )){
 # foreach ($job in @("get-hududata","read-csvs")){
     $ITBoostData.JobState = @{Status="$job"; StartedAt=$(Get-Date); FinishedAt=$null}
