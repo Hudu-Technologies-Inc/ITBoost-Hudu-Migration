@@ -188,17 +188,18 @@ function Get-HuduCompanyFromName {
     $matchedCompany = $null
     if ($existingIndex -ne $null -and $existingIndex.count -gt 0){
         $matchedCompany = $matchedCompany ?? $existingIndex | where-object {
-            ($_.CompanyName -ieq $CompanyName) -or
+            ($_.CompanyName -ieq $CompanyName) -or ($_.HuduCompany.name -ieq $CompanyName) -or
             [bool]$(test-equiv -A $_.CompanyName -B $CompanyName) } | Select-Object -First 1
         if ($includenicknames){
             $matchedCompany = $matchedCompany ?? $existingIndex | where-object {
-                (-not [string]::IsNullOrWhiteSpace($_.HuduObject.nickname)) -and (
-                    ($_.HuduObject.nickname -ieq $CompanyName) -or
+                (-not [string]::IsNullOrWhiteSpace($_.HuduCompany.nickname)) -and (
+                    ($_.HuduCompany.nickname -ieq $CompanyName) -or
                     [bool]$(test-equiv -A $_.HuduObject.nickname -B $CompanyName))
             } | Select-Object -First 1
         }
     }
     if ($null -ne $matchedCompany){
+      $matchedCompany = $matchedCompany.HuduCompany ?? $matchedCompany
       write-host "matched company using prematched companies: $($matchedCompany.name)"
       return $matchedCompany
     }    
@@ -217,6 +218,7 @@ function Get-HuduCompanyFromName {
         $matchedCompany = $matchedCompany ?? (get-huducompanies | where-object {[bool]$(test-equiv -A $_.name -B $CompanyName)} | select-object -first 1)
     }
     if ($null -ne $matchedCompany){
+      $matchedCompany = $matchedCompany.HuduCompany ?? $matchedCompany
       write-host "matched company using companies array: $($matchedCompany.name)"
       return $matchedCompany
     }
@@ -232,9 +234,10 @@ function Get-HuduCompanyFromName {
     }
     if ($null -ne $matchedCompany){
       write-host "matched company using API call: $($matchedCompany.name)"
+      $matchedCompany = $matchedCompany.HuduCompany ?? $matchedCompany
       return $matchedCompany
     }
-
+    $matchedCompany = $matchedCompany.HuduCompany ?? $matchedCompany
     return $matchedCompany
 }
 

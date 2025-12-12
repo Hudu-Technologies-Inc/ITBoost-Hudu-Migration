@@ -172,7 +172,7 @@ if ($ITBoostData.ContainsKey("contacts")){
         $contactsForCompany = $groupedContacts[$company]
         $matchedCompany = $null
         $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
-        if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) {write-host "skipping $company due to no match"; continue;}
+        if ($null -eq $matchedCompany -or $null -eq $matchedcompany.id -or $matchedcompany.id -lt 1) {write-host "skipping $company due to no match"; continue;}
         foreach ($companyContact in $contactsForCompany){
             $matchedcontact = $null
             $matchedContact = Find-HuduContact `

@@ -5,6 +5,7 @@ if ($ITBoostData.ContainsKey("organizations")){
     foreach ($row in $ITBoostData.organizations.CSVData){
         $matchedCompany=$null
         $matchedCompany = Get-HuduCompanyFromName -CompanyName $row.name -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
+        $matchedCompany = $matchedCompany.company ?? $matchedCompany
         if ($matchedCompany){
             Write-Host "Matched company $($matchedCompany.name) to $($row.name)"
             $ITBoostData.organizations["matches"]+=@{
