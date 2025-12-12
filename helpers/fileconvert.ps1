@@ -3,7 +3,7 @@ function Get-EnsuredPath {
     param([string]$path)
     $outpath = if (-not $path -or [string]::IsNullOrWhiteSpace($path)) { $(join-path $(Resolve-Path .).path "debug") } else {$path}
     if (-not (Test-Path $outpath)) {
-        Get-ChildItem -Path "$outpath" -File -Recurse -Force | Remove-Item -Force
+        Get-ChildItem -Path "$outpath" -File -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Force
         New-Item -ItemType Directory -Path $outpath -Force -ErrorAction Stop | Out-Null
         write-host "path is now present: $outpath"
     } else {write-host "path is present: $outpath"}

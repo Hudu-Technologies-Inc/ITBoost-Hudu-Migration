@@ -71,6 +71,7 @@ if ($ITBoostData.ContainsKey("locations")){
         
 
         $locationsSeen = @()
+        if ([string]::IsNullOrEmpty($company)){continue}
         $locationsForCompany=$groupedLocations["$company"]
         $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
         if (-not $matchedCompany) {continue}

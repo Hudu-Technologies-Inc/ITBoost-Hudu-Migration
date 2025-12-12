@@ -180,9 +180,11 @@ function Get-HuduCompanyFromName {
         [string]$CompanyName,
         [array]$HuduCompanies,
         [bool]$includenicknames = $false,
-        [array]$existingIndex = $null
+        [array]$existingIndex = @()
     )
     if ([string]::IsNullOrWhiteSpace($CompanyName)) { return $null }
+
+    # matched first
     $matchedCompany = $null
     if ($existingIndex -ne $null -and $existingIndex.count -gt 0){
         $matchedCompany = $matchedCompany ?? $existingIndex | where-object {
@@ -196,22 +198,43 @@ function Get-HuduCompanyFromName {
             } | Select-Object -First 1
         }
     }
+    if ($null -ne $matchedCompany){
+      write-host "matched company using prematched companies: $($matchedCompany.name)"
+      return $matchedCompany
+    }    
 
-
+    # then existing list
     $matchedCompany = $matchedCompany ?? $HuduCompanies | where-object {
             ($_.name -ieq $CompanyName) -or
             [bool]$(test-equiv -A $_.name -B $CompanyName)`
         } | Select-Object -First 1
-    $matchedCompany = $matchedCompany ?? $(Get-HuduCompanies -Name $CompanyName | select-object -first 1)
-    $matchedCompany = $matchedCompany ?? (get-huducompanies | where-object {[bool]$(test-equiv -A $_.name -B $CompanyName)} | select-object -first 1)
-    
-    if ($includenicknames){
-        $matchedCompany = $HuduCompanies | where-object {
+
+    if ($true -eq $includenicknames){
+        $matchedCompany =$matchedCompany ?? $HuduCompanies | where-object {
                 ($_.nickname -ieq $CompanyName) -or
                 [bool]$(test-equiv -A $_.nickname -B $CompanyName)`
             } | Select-Object -First 1
         $matchedCompany = $matchedCompany ?? (get-huducompanies | where-object {[bool]$(test-equiv -A $_.name -B $CompanyName)} | select-object -first 1)
     }
+    if ($null -ne $matchedCompany){
+      write-host "matched company using companies array: $($matchedCompany.name)"
+      return $matchedCompany
+    }
+
+
+    # finally API call
+    $matchedCompany = $matchedCompany ?? $(Get-HuduCompanies -Name $CompanyName | select-object -first 1)
+    if ($null -eq $matchedCompany){
+          $matchedCompany = $matchedCompany ?? $(Get-HuduCompanies) | where-object {
+            ($_.name -ieq $CompanyName) -or
+            [bool]$(test-equiv -A $_.name -B $CompanyName)`
+        } | Select-Object -First 1
+    }
+    if ($null -ne $matchedCompany){
+      write-host "matched company using API call: $($matchedCompany.name)"
+      return $matchedCompany
+    }
+
     return $matchedCompany
 }
 
