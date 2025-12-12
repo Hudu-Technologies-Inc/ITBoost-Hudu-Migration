@@ -44,6 +44,7 @@ if ($ITBoostData.ContainsKey("documents")){
         }
     }
     Write-Host "unresolved folders? $($docToFolder | Sort-Object { -not $_.folder }, @{e='confidence';d=$true} | Format-Table -AutoSize)"
+    if (-not $ITBoostData.documents.ContainsKey('matches')) { $ITBoostData.documents['matches'] = @() }
 
 
     foreach ($company in $groupeddocuments.Keys) {
@@ -61,16 +62,13 @@ if ($ITBoostData.ContainsKey("documents")){
             $matchedDocument = $matchedDocument ?? $($(Get-HuduArticles -CompanyId $matchedCompany.id -name $companydocument.name) | Select-Object -first 1)
             if ($matcheddocument){
                 Write-Host "matched $($companydocument.name) to doc in Hudu @ $($matchedDocument.url); updating"
-                    if (-not $ITBoostData.documents.ContainsKey('matches')) { $ITBoostData.documents['matches'] = @() }
                     $ITBoostData.documents['matches'] += @{
                         CompanyName      = $companydocument.organization
-                        CsvRow           = $companydocument.CsvRow
                         ITBID            = $companydocument.id
                         Name             = $companydocument.name
                         HuduID           = $matcheddocument.id
                         HuduObject       = $matcheddocument
                         HuduCompanyId    = $matcheddocument.company_id
-                        PasswordsToCreate= ($companydocument.password ?? @())
                     }
                     # continue
                 if ($DeleteDocsMode -and $true -eq $DeleteDocsMode){
@@ -232,19 +230,21 @@ if ($ITBoostData.ContainsKey("documents")){
 
                 try {
                     Write-host "$($($newdocumentrequest | convertto-json).ToString())"
+                    $newdocument = $null
                     $newdocument = Set-HuduArticle @newdocumentrequest
+                    $newdocument = $newdocument.article ?? $newdocument
                 } catch {
                     write-host "Error creating location: $_"
                 }
-                if ($newdocument){
+                if ($null -ne $newdocument){
+                    write-host "created document $($companydocument.name) with ID $($newdocument.id) for company $($matchedCompany.name)"
                     $ITBoostData.documents["matches"]+=@{
                         CompanyName=$companydocument.organization
-                        CsvRow=$companydocument.CsvRow
                         ITBID=$companydocument.id
                         Name=$companydocument.name
                         HuduID=$newdocument.id
                         HuduObject=$newdocument
-                        HuduCompanyId=$newdocument.company_id
+                        HuduCompanyId=$($matchedcompany.id ?? $newdocument.company_id)
                         PasswordsToCreate=$($companydocument.password ?? @())
                     }            
             }

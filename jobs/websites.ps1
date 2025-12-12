@@ -11,6 +11,7 @@ if ($ITBoostData.ContainsKey("domains")){
             $matchedCompany = Get-HuduCompanyFromName -CompanyName $row.organization -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
         } else {
             #internal
+            $internalCompanyId = $internalCompanyId ?? $(read-host "please enter the id (integer) of internal hudu company")
             $matchedCompany = Get-HuduCompanies -id $internalCompanyId; $matchedCompany = $matchedCompany.company ?? $matchedCompany;
         }
         if ($null -eq $matchedCompany -or $null -eq $matchedCompany.id) {
@@ -37,20 +38,21 @@ if ($ITBoostData.ContainsKey("domains")){
                     Notes=$notes; CompanyID=$matchedCompany.id
                     DisableSSL='false'; DisableDNS='false'; DisableWhois='false'; EnableDMARC='true'; EnableDKIM='true'; EnableSPF='true';}            
             try {
+                $newwebsite = $null
                 $newWebsite=New-HuduWebsite @newWebsiteRequest
+                $newWebsite = $newwebsite.website ?? $newWebsite
             } catch {
                 Write-Host "Error during company create $_"
             }
-            if ($newWebsite){
+            if ($null =ne $newWebsite){
+                write-host "Created new website $($newWebsite.name) with ID $($newWebsite.id) for company $($matchedCompany.name)"
                 $ITBoostData.domains["matches"]+=@{
-                    CsvRow=-1
                     ITBID=$row.id
                     Name=$row.name
                     HuduID=$newWebsite.id
                     HuduObject=$newWebsite
                     CompanyName=$row.organization
                     HuduCompanyId=$newWebsite.company_id
-                    PasswordsToCreate=$($row.password ?? @())
                 }
             }
             continue
@@ -58,13 +60,11 @@ if ($ITBoostData.ContainsKey("domains")){
             Write-Host "Matched website $($MatchedWebsite.name) to $($row.name)"
             $ITBoostData.domains["matches"]+=@{
                 CompanyName=$row.organization
-                CsvRow=$row.CsvRow
                 ITBID=$row.id
                 Name=$row.name
                 HuduID=$MatchedWebsite.id
                 HuduObject=$MatchedWebsite
                 HuduCompanyId=$MatchedWebsite.company_id
-                PasswordsToCreate=$($row.password ?? @())
             }
             continue
         }

@@ -80,17 +80,17 @@ if ($ITBoostData.ContainsKey("locations")){
         foreach ($companyLocation in $locationsForCompany){
 
             if ($locationsSeen -contains $companyLocation.name){continue} else {$locationsSeen+="$($companyLocation.name)"}
-            $matchedlocation = $allHuduLocations | where-object {$_.company_id -eq $matchedCompany.id -and  $($(test-equiv -A $_.name -B $companyLocation.name) -or $(test-equiv -A $companyLocation.address_1 -B $($_.fields | where-object {$_.label -ilike "address"} | select-object -first 1).value))} | select-object -first 1
-            if ($matchedLocation){
+            $matchedlocation = $null
+            $matchedlocation = get-huduassets -AssetLayoutId $LocationLayout.id -CompanyId $matchedCompany.id -name $companyLocation.name | select-object -first 1
+            $matchedlocation = $matchedlocation.asset ?? $matchedlocation
+            if ($null -ne $matchedlocation){
                 Write-Host "Matched $($companyLocation.name) to $($matchedlocation.name) for $($matchedCompany.name)"
                 $ITBoostData.locations["matches"]+=@{
                     CompanyName=$companyLocation.organization
-                    CsvRow=$companyLocation.CsvRow
                     ITBID=$companyLocation.id
-                    HuduID=$MatchedWebsite.id
-                    HuduObject=$MatchedWebsite
-                    HuduCompanyId=$MatchedWebsite.company_id
-                    PasswordsToCreate=$($companyLocation.password ?? @())
+                    HuduID=$matchedlocation.id
+                    HuduObject=$matchedlocation
+                    HuduCompanyId=$matchedlocation.company_id
                 }
             } else {
                 $NewAddressRequest=@{
@@ -100,10 +100,7 @@ if ($ITBoostData.ContainsKey("locations")){
                 }
                 $fields = @()
 
-                if ($false -eq $UseSimpleMap){
-                    $NewAddressRequest["Fields"]=Build-FieldsFromRow -row $companyLocation -layoutFields $locationfields  -companyId $matchedCompany.id
-                } else {
-                    $fields = foreach ($key in $LocationsMap.Keys) {
+                $fields = foreach ($key in $LocationsMap.Keys) {
                     # pull value from CSV row
                     $rowVal = $row.$key ?? $null
                     if ($null -eq $rowVal) { continue }
@@ -112,54 +109,53 @@ if ($ITBoostData.ContainsKey("locations")){
 
                     $huduField = $LocationsMap[$key]
                     [ordered]@{ $($huduField) = $rowVal.Trim() }
-                    }
-
-                    if ($fields.count -ge 1){
-                        $NewAddressRequest["Fields"]=$fields
-                    }
-                }
-                if ($null -ne $AddressDataField){
-                    $newAddress=$null
-                    if ($row.address_1 -or $row.address_2 -or $row.city -or $row.region -or $row.postal_code -or $row.country) {
-                        $NewAddress = [ordered]@{
-                            address_line_1 = $row.address_1
-                            city           = $row.city
-                            state          = $(Normalize-Region $row.region)
-                            zip            = $(Normalize-Zip $row.postal_code)
-                            country_name   = $(Normalize-CountryName $row.country)
-                        }
-                        if (-not [string]::IsNullOrEmpty($row.address_2)) { $NewAddress['address_line_2'] = $addr2 }
-                    }
-                    if ($null -ne $newAddress){
-                        $fields+=@{$AddressDataField = $newAddress}
-                        $NewAddressRequest["Fields"]=$fields
-                    }
-
                 }
 
-
-
-                try {
-                    $newLocation = $null
-                    $newLocation = New-Huduasset @NewAddressRequest
-                    $newLocation = $newLocation.asset ?? $newLocation
-                } catch {
-                    write-host "Error creating location: $_"
-                }
-                if ($newLocation){
-                    $ITBoostData.locations["matches"]+=@{
-                        CompanyName=$companyLocation.organization
-                        CsvRow=$companyLocation.CsvRow
-                        ITBID=$companyLocation.id
-                        Name=$companyLocation.name
-                        HuduID=$newLocation.id
-                        HuduObject=$newLocation
-                        HuduCompanyId=$newLocation.company_id
-                        PasswordsToCreate=$($companyLocation.password ?? @())
-                    }            
+                if ($fields.count -ge 1){
+                    $NewAddressRequest["Fields"]=$fields
                 }
             }
+            if ($null -ne $AddressDataField){
+                $newAddress=$null
+                if ($row.address_1 -or $row.address_2 -or $row.city -or $row.region -or $row.postal_code -or $row.country) {
+                    $NewAddress = [ordered]@{
+                        address_line_1 = $row.address_1
+                        city           = $row.city
+                        state          = $(Normalize-Region $row.region)
+                        zip            = $(Normalize-Zip $row.postal_code)
+                        country_name   = $(Normalize-CountryName $row.country)
+                    }
+                    if (-not [string]::IsNullOrEmpty($row.address_2)) { $NewAddress['address_line_2'] = $addr2 }
+                }
+                if ($null -ne $newAddress){
+                    $fields+=@{$AddressDataField = $newAddress}
+                    $NewAddressRequest["Fields"]=$fields
+                }
+
+            }
+
+
+
+            try {
+                $newLocation = $null
+                $newLocation = New-Huduasset @NewAddressRequest
+                $newLocation = $newLocation.asset ?? $newLocation
+            } catch {
+                write-host "Error creating location: $_"
+            }
+            if ($newLocation){
+                write-host "created location $($companyLocation.name) with ID $($newLocation.id) for company $($matchedCompany.name)"
+                $ITBoostData.locations["matches"]+=@{
+                    CompanyName=$companyLocation.organization
+                    ITBID=$companyLocation.id
+                    Name=$companyLocation.name
+                    HuduID=$newLocation.id
+                    HuduObject=$newLocation
+                    HuduCompanyId= $($matchedCompany.id ?? $newLocation.company_id)
+                }            
+            }
         }
+        
     }
 } else {write-host "no locations in CSV! skipping."}
     $allHuduLocations = Get-HuduAssets -AssetLayoutId $LocationLayout.id
