@@ -1,5 +1,7 @@
 get-ensuredpath -path $TMPbasedir | Out-Null
 
+$RunbookNamesUsed = @()
+
 $internalCompany = Get-HuduCompanies -id $internalCompanyId
 $internalCompany = $internalCompany.company ?? $internalCompany
 if (-not $internalCompany){
@@ -41,6 +43,11 @@ foreach ($r in $runbooks) {
 
     $docName = Get-SafeFilename -MaxLength 65 -Name "Runbook $childFolder"
     $docName = $docName -replace "Untitled","Untitled $($($uuid -split '-')[0])"
+    if ($RunbookNamesUsed -contains $docName) {
+        $docName = "$docName $($($uuid -split '-')[0])"
+    }
+    $RunbookNamesUsed += $docName
+
     Write-Host "Doc will be titled $docName"
 
     $images = Get-ChildItem -Path $r.FullName -Recurse -File |
