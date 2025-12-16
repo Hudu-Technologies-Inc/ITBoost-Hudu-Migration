@@ -17,10 +17,10 @@ Easy Migration from ITBoost to Hudu
 You'll need just a few items to start
 The default configurations csv is invalid. You'll need to replace the 2nd column named 'model' to 'modelo' first, using excel or libreoffice
 
-
 ### Setup Hudu
 
 You'll need to add an API key that has full access, if possible. copy it to clipboard for later or add it to your environment file.
+Other than that, it's best to start fresh. You can custom-map fields in the same way that you map fields which are templated to custom layouts, but it's generally easier if you start fresh.
 
 ### Environment File
 
@@ -29,7 +29,8 @@ Make your own copy of the environ.example template (as .ps1 file) and record the
 - `$hudubaseurl` (eg. ***https://myinstance.huducloud.com***),
 - `$huduapikey` (preferably with full-access)
 - `$ITBoostExportPath`, your absolute/full path to your ITBoost Export
-
+- `TMPbasedir`, your designated temp directory for document, article, image processing
+- `internalCompanyName`, your company name, whether existing, or to-be-created
 
 >Here's a snippet to move you in the right direction (make sure you're in project folder first)
 >```
