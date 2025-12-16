@@ -59,7 +59,11 @@ Otherwise, if you invoke the script directly, you'll be asked for required infor
 
 ## Custom Asset Layouts
 
-Custom asset layouts job is intended to be ran for core-entities. That is to say, assets that aren't locations, contacts, companies, websites, configurations, documents, passwords, locations, or runbooks.
+Custom asset layouts job is intended to be ran for core-entities. That is to say, assets that aren't locations, contacts, companies, websites, configurations, documents, passwords, locations, or runbooks. All the previous items are automagic, but custom flexible layouts (for now) require a touch of elbow-grease. Not to worry, if you goof something, you can simply remove the asset layout in Hudu and try again by re-invoking the flexi-layout job. It's pretty forgiving
+
+```
+. .\jobs\flexi-layout
+```
 
 This job can be ran as many times as needed until every entity is taken care of at any point after the initial / core items have been taken care of.
 
@@ -69,11 +73,34 @@ The properties from your selected CSV will be enumerated in a 'suggested' asset 
 This part is pretty easy once you get the hang of it, but could seem daunting at first. Not to worry- 
 
 Your template file will be named after the entry you have chosen and will end with ".ps1", as it contains the definitions we need.
+You'll mainly be concerned with the field_types in the generated asset layout. In the future, these will likely all be generated based on the data present in your CSV, but for now, it requires a little bit of user-interaction.
 
+<img width="632" height="669" alt="image" src="https://github.com/user-attachments/assets/86a4d2fa-d020-44fa-bf5e-e8569ddfc198" />
 
+First, is the FlexiFields object- these are the fields that are going to be placed into Hudu. These fields will default to a field_type of Text, which is fine for many cases, however, there are certain conditions where changing these is best.
 
+- If a field contains passwords, you'll want to set the field_type to `ConfidentialText`
+- If a field contains IP addresses or URLs, you'll want to set field_type to `Website`
+- If a field contains embeds, links, or otherwise RichText, you'll want to use `RichText`
+- For Linked Items, there's a few options.
+    - For linked passwords which are their own entity, we can link those by name by placing the corresponding 'name' label for that layout in `LinkedAsPasswords` array
+    - For Linked Documents, if there is a field that contains the approximate document title/name in this layout/asset, you can place it in the `DocFields` array
 
+- If you have a FontAwesome Icon in mind that you'd like to use, you can place that as a string under variable for $GivenIcon variable. The icon will be guessed if this isnt set, so no trouble there.
+- If you change the name of the label in $flexifields map, you'll want to update the right-hand label in the corresponding $flexismap to reflect your label change
+- If you want to join multiple fields into a single field (usually as RichText), you can add these fields to $SmooshLabels array. Anything included in the Smooshlabels array will be joined together in Field - Value format in a pseudo-table within the target field you wish to use. So, for example, if you want to join, "Notes","Root user","general access user" fields into a single richtext field in Hudu, you'd do something like this, below
+<img width="550" height="67" alt="image" src="https://github.com/user-attachments/assets/50391610-0c22-43bb-88ab-33e8cccc4553" />
 
+It will surely get easier in the future with some automatic parsing stuff, but for the time being, this offers the most flexibility.
 
-## Notes on Runbooks
+## Other Entity Types
+
+### Runbooks
+If you have a folder in your export, named 'RB', these runbooks will have their sub-docs joined together into a single Hudu Article, representing the data just as it was in ITBoost.
+
+### Gallery
+Not too common, but gallery items will be re-created as articles with your gallery images, similar to ITBoost
+
+### Standalone-Notes
+If you have a standalone notes type entity (notes.csv), these will be incorporated into new Articles in Hudu.
 
