@@ -4,6 +4,8 @@ Easy Migration from ITBoost to Hudu
 
 ## Setup
 
+The default configurations csv is invalid. You'll need to replace the 2nd column named 'model' to 'modelo' first, using excel or libreoffice
+
 ### Prerequisites
 
 - Hudu Instance of 2.38.0 or newer
