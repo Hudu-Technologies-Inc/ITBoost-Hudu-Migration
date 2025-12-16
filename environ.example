@@ -3,6 +3,5 @@ $HuduAPIKey="huduapikey"
 $ITBoostExportPath="X:\yourexportpath"
 $TMPbasedir="X:\designatedpersistenttempdir"
 
-$DeleteDocsMode = $false
-$UseSimpleMap = $true
+$internalCompanyName = "Myinternal Company"
 . .\migrate-itboost-hudu.ps1
