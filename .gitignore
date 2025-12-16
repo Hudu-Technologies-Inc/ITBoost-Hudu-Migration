@@ -1,0 +1,13 @@
+ITBoost\*
+*environ*
+!*.example
+results.json
+*.json
+debug
+*debug/*
+*.json
+*.env
+*environment*.ps1
+*environ*.ps1
+mappings-*.*
+*mappings*

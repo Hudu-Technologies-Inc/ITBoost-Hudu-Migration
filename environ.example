@@ -1,0 +1,7 @@
+$HuduBaseURL="yoururl.huducloud.com"
+$HuduAPIKey="huduapikey"
+$ITBoostExportPath="X:\yourexportpath"
+$TMPbasedir="X:\designatedpersistenttempdir"
+
+$internalCompanyName = "Myinternal Company"
+. .\migrate-itboost-hudu.ps1
