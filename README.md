@@ -58,6 +58,11 @@ Otherwise, if you invoke the script directly, you'll be asked for required infor
 . .\migrate-itboost-hudu.ps1
 ```
 
+During the process, Companies, Locations, Contacts, Websites, Passwords, Articles, and Configurations will be created automagically for you. It's best to start with a blank slate. If you are a go-getter, you'll find that you can map csv fields to existing layouts, but it's not really intended for that use, outside of the flexible layout template generator portion (flexi-layout job).
+
+The process should be relatively quick and painless. It will descriptively tell you what's going on, and while things are going on, it's best to leave the process and hudu instance, not modifying layouts or data while in-transit, if at all possible
+
+
 ## Custom Asset Layouts
 
 Custom asset layouts job is intended to be ran for core-entities. That is to say, assets that aren't locations, contacts, companies, websites, configurations, documents, passwords, locations, or runbooks. All the previous items are automagic, but custom flexible layouts (for now) require a touch of elbow-grease. Not to worry, if you goof something, you can simply remove the asset layout in Hudu and try again by re-invoking the flexi-layout job. It's pretty forgiving
