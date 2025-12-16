@@ -94,3 +94,10 @@ if ($ITBoostData.ContainsKey("passwords")) {
     }
   }
 }
+foreach ($p in $(get-hudupasswords)){
+    $pass = $p.asset_password ?? $p; $desc = $pass.description;
+    if ([string]::IsNullOrEmpty($desc)){write-host "empty description on pass $($pass.id), skipping"; continue}
+    $descupdated = ConvertFrom-HtmlToPlainText "$desc"
+    if ($desc -ne $descupdated -and -not ([string]::IsNullOrWhiteSpace(($descupdated) -and $pass.id -ne $null))){Set-HuduPassword -id $pass.id -CompanyId $pass.company_id -Description "$descupdated"} else {write-host "Skipping description on pass - no change for $($pass.id)"; continue;}
+
+}

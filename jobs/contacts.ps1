@@ -73,7 +73,7 @@ $SmooshPropsTo = "Notes"
 # Notes
 # IP Address of Primary Computer
 
-$LocationLayout = Get-HuduAssetLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "location" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "locations" -Haystack $_.name)) } | Select-Object -First 1
+$LocationLayout = $LocationLayout ?? (Get-HuduAssetLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "location" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "locations" -Haystack $_.name)) } | Select-Object -First 1)
 
 function Build-HuduContactIndex {
   [CmdletBinding()]
@@ -123,22 +123,24 @@ function Build-HuduContactIndex {
 
 # load companies index if available
 $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
-
-if (-not $ITBoostData.ContainsKey("contacts")){write-host "No contacts in CSV"; exit 0}
 if (-not $ITBoostData.contacts.ContainsKey('matches')) { $ITBoostData.contacts['matches'] = @() }
-$contactsLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "contact" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "people" -Haystack $_.name)) } | Select-Object -First 1
+
+$contactsLayout = $(get-huduassetlayouts) | Where-Object { $_.name -ilike "*people*" -or $_.name -ilike "*contacts*" } | Select-Object -First 1
 if (-not $contactsLayout){
     $StatusList = Get-HuduLists | Where-Object {$_.name -ieq "People Status" -or $_.name -ieq "Contact Status"} | Select-Object -First 1
     $statusList = $StatusList ?? $(new-hudulist -name "People Status" -items @("ACTIVE", "INACTIVE (DO NOT SERVICE)", "Leave", "Terminated", "Onboarding"))
     $StatusList = $StatusList.list ?? $StatusList
+    write-host "using $($StatusList.name) list for contact status field"
 
     $contactList = Get-HuduLists | Where-Object {$_.name -ieq "People Preferred Communications" -or $_.name -ieq "Preferred Communications"} | Select-Object -First 1
     $contactList = $contactList ?? $(new-hudulist -name "People Preferred Communications" -items @("Office Phone","Cell Phone","Email","Text"))
     $contactList = $contactList.list ?? $contactList
+    write-host "using $($contactList.name) list for contact preferred communications field"
 
     $genderList = Get-HuduLists | Where-Object {$_.name -ilike "Gender" -or $_.name -ilike "Sex"} | Select-Object -First 1
     $genderList = $genderList ?? $(new-hudulist -name "Gender" -items @("Male","Female","Non-Binary","Other","Prefer Not to Say"))
     $genderList = $genderList.list ?? $genderList        
+    write-host "using $($genderList.name) list for contact gender field"
 
     $contactsLayout=$(New-HuduAssetLayout -name "contacts" -Fields @(
     @{label="Status";   show_in_list=$false;   field_type="ListSelect";required=$false;   multiple_options=$true;list_id=$StatusList.id;   position=1},
@@ -152,9 +154,13 @@ if (-not $contactsLayout){
     @{label="Workstation used";   show_in_list=$false;   field_type="Text";required=$false;   hint="What workstation is used?";   position=11},
     @{label="Notes";   show_in_list=$false;   field_type="RichText";required=$false;   hint="";   position=12},
     @{label="IP Address of Primary Computer";   show_in_list=$false;   field_type="Website";required=$false;   hint="";   linkable_id=5;   position=13},
-    @{label="Location";   show_in_list=$true;   field_type="AssetTag";required=$false;   hint="";   linkable_id=$LocationLayout.id;   multiple_options=$false;list_id=4;   position=14}
+    @{label="Location";   show_in_list=$true;   field_type="AssetTag";required=$false;   hint="";   linkable_id=$LocationLayout.id;   multiple_options=$false; position=14}
     ) -Icon "fas fa-users" -IconColor "#ffffff" -Color "#6136ff" -IncludePasswords $true -IncludePhotos $true -IncludeComments $true -IncludeFiles $true).asset_layout
+    $contactsLayout = $contactsLayout.asset_layout ?? $contactsLayout
+    $null = Set-HuduAssetLayout -id $contactsLayout.id -Active $true
     $contactsLayout = Get-HuduAssetLayouts -id $contactsLayout.id
+} else {
+    $contactsLayout = $contactsLayout.asset_layout ?? $contactsLayout
 }
 if (-not $contactsLayout){write-host "Could not find or create contacts layout, cannot proceed."; exit 1}
 
@@ -188,8 +194,7 @@ foreach ($company in $groupedContacts.Keys) {
         # fallback to API search by name if still null:
         if (-not $matchedContact -and ($companyContact.first_name -or $companyContact.last_name)) {
             $qName = ("{0} {1}" -f $companyContact.first_name, $companyContact.last_name).Trim()
-            $matchedContact = Get-HuduAssets -AssetLayoutId $contactsLayout.id -CompanyId $matchedCompany.id -Name $qName |
-                                Select-Object -First 1
+            $matchedContact = Get-HuduAssets -AssetLayoutId $contactsLayout.id -CompanyId $matchedCompany.id -Name $qName | Select-Object -First 1
             $matchedcontact = $matchedContact.asset ?? $matchedContact
         }
         if ($null -ne $matchedcontact){
