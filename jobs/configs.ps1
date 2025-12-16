@@ -22,7 +22,8 @@ $configsMap = @{
 }
 
 $ConfigurationsHaveBeenApplied=$false
-
+$ConfigsRichTextOverviewField = "Additional Information"
+$OverviewField = $configsLayout.fields | where-object {$_.label -eq $ConfigsRichTextOverviewField -and $_.field_type -eq "RichText"} | Select-Object -First 1
 # load companies index if available
 $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
 
@@ -30,7 +31,7 @@ if ($ITBoostData.ContainsKey("configurations")){
     if (-not $ITBoostData.configurations.ContainsKey('matches')) { $ITBoostData.configurations['matches'] = @() }
     $huduCompanies = $huduCompanies ?? $(get-huducompanies)
 
-    $configsLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "config" -haystack $_.name) -or $($_.name -ilike "config*")) } | Select-Object -First 1; $configsLayout = $configsLayout.asset_layout ?? $configsLayout
+    $configsLayout = get-huduassetlayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "config" -haystack $_.name) -or $($_.name -ilike "config*")) } | Select-Object -First 1; $configsLayout = $configsLayout.asset_layout ?? $configsLayout;
     write-host "Configs layout id $($configsLayout.id)"
     if (-not $configsLayout){
         $configsLayout=$(New-HuduAssetLayout -name "configs" -Fields @(
@@ -48,15 +49,16 @@ if ($ITBoostData.ContainsKey("configurations")){
                     @{label = "operating system"; field_type = "Text"; show_in_list = $false; position=3},
                     @{label = "operating system notes"; field_type = "Text"; show_in_list = $false; position=4},
                     @{label = "position"; field_type = "Text"; show_in_list = $false; position=5},
-                    @{label = "notes"; field_type = "Text"; show_in_list = $false; position=6},
+                    @{label = "notes"; field_type = "RichText"; show_in_list = $false; position=6},
                     @{label = "installed at"; field_type = "Text"; show_in_list = $false; position=7},
                     @{label = "installed by"; field_type = "Text"; show_in_list = $false; position=8},
                     @{label = "purchased at"; field_type = "Text"; show_in_list = $false; position=9},
                     @{label = "purchased by"; field_type = "Text"; show_in_list = $false; position=10},
                     @{label = "warranty expires at"; field_type = "Text"; show_in_list = $false; position=11},
                     @{label = "contact"; field_type = "Text"; show_in_list = $false; position=12},
-                    @{label = "location"; field_type = "Text"; show_in_list = $false; position=13},
-                    @{label = "configuration interfaces"; field_type = "Text"; show_in_list = $false; position=14}
+                    @{label = "location"; field_type = "AssetTag"; linkable_id=$LocationLayout.id; show_in_list = $false; position=13},
+                    @{label = "configuration interfaces"; field_type = "Text"; show_in_list = $false; position=14},
+                    @{label=$ConfigsRichTextOverviewField; field_type = "RichText"; position=259;}
         ) -Icon "fas fa-users" -IconColor "#ffffff" -Color "#6136ff" -IncludePasswords $true -IncludePhotos $true -IncludeComments $true -IncludeFiles $true).asset_layout
         $configsLayout = Get-HuduAssetLayouts -id $configsLayout.id; $configsLayout = $configsLayout.asset_layout ?? $configsLayout
     }

@@ -180,7 +180,8 @@ function Get-HuduCompanyFromName {
         [string]$CompanyName,
         [array]$HuduCompanies,
         [bool]$includenicknames = $false,
-        [array]$existingIndex = @()
+        [array]$existingIndex = @(),
+        [bool]$deepCompanySearch = $false
     )
     if ([string]::IsNullOrWhiteSpace($CompanyName)) { return $null }
 
@@ -215,7 +216,6 @@ function Get-HuduCompanyFromName {
                 ($_.nickname -ieq $CompanyName) -or
                 [bool]$(test-equiv -A $_.nickname -B $CompanyName)`
             } | Select-Object -First 1
-        $matchedCompany = $matchedCompany ?? (get-huducompanies | where-object {[bool]$(test-equiv -A $_.name -B $CompanyName)} | select-object -first 1)
     }
     if ($null -ne $matchedCompany){
       $matchedCompany = $matchedCompany.HuduCompany ?? $matchedCompany
@@ -225,6 +225,8 @@ function Get-HuduCompanyFromName {
 
 
     # finally API call
+    if ($deepCompanySearch -eq $false){return $matchedCompany}
+
     $matchedCompany = $matchedCompany ?? $(Get-HuduCompanies -Name $CompanyName | select-object -first 1)
     if ($null -eq $matchedCompany){
           $matchedCompany = $matchedCompany ?? $(Get-HuduCompanies) | where-object {

@@ -6,7 +6,8 @@ $companiesIndex =  $(join-path $debug_folder -ChildPath "MatchedCompanies.json")
 
 $UseSimpleMap = $true
 $SkipInactive = $true
-
+$ConfigExpansionMethod = "ALL"
+$deepCompanySearch = $false
 
 $ITBoostExportPath=$ITBoostExportPath ?? "$(read-host "enter ITBoost export path")"
 while (-not $(test-path $ITBoostExportPath)){
@@ -37,16 +38,16 @@ foreach ($job in @(
 "get-hududata",
 # "companies",
 # "locations",
-"contacts",
+# "contacts",
 # "websites",
 # "configs",
-# "expand-configs",
+"expand-configs",
 # "documents",
 # "runbooks",
 # "standalone-notes",
 # "gallery",
 # "flexi-layout"
-"passwords",
+# "passwords",
 "wrap-up"
 )){
 # foreach ($job in @("get-hududata","read-csvs")){

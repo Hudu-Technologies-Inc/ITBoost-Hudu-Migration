@@ -20,235 +20,235 @@ if ($allowConvert -eq $true){
 # load companies index if available
 $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
 
-if ($ITBoostData.ContainsKey("documents")){
-    if (-not $ITBoostData.documents.ContainsKey('matches')) { $ITBoostData.documents['matches'] = @() }
+if (-not $ITBoostData.ContainsKey("documents")){write-host "no documents recorded in ITBoost data, skipping"; return}
+if (-not $ITBoostData.documents.ContainsKey('matches')) { $ITBoostData.documents['matches'] = @() }
 
-    $groupeddocuments = $ITBoostData.documents.CSVData | Group-Object { $_.organization } -AsHashTable -AsString
-    try {
-        $allHududocuments = Get-HuduArticles
-    } catch {
-        $allHududocuments=@()
+$groupeddocuments = $ITBoostData.documents.CSVData | Group-Object { $_.organization } -AsHashTable -AsString
+try {
+    $allHududocuments = Get-HuduArticles
+} catch {
+    $allHududocuments=@()
+}
+$rootDocs = Join-Path $ITBoostExportPath 'documents'
+$folderIndex = Build-DocFolderIndex -Root $rootDocs
+$docToFolder = foreach ($row in $ITBoostData.documents.CSVData) {
+    $match = Resolve-DocFolder -Row $row -Index $folderIndex
+
+    [pscustomobject]@{
+        itb_id     = $row.id
+        name       = $row.name
+        locator    = $row.locator
+        folder     = $match?.Path
+        confidence = $match?.Confidence
+        reason     = $match?.Reason
     }
-    $rootDocs = Join-Path $ITBoostExportPath 'documents'
-    $folderIndex = Build-DocFolderIndex -Root $rootDocs
-    $docToFolder = foreach ($row in $ITBoostData.documents.CSVData) {
-        $match = Resolve-DocFolder -Row $row -Index $folderIndex
-
-        [pscustomobject]@{
-            itb_id     = $row.id
-            name       = $row.name
-            locator    = $row.locator
-            folder     = $match?.Path
-            confidence = $match?.Confidence
-            reason     = $match?.Reason
-        }
-    }
-    Write-Host "unresolved folders? $($docToFolder | Sort-Object { -not $_.folder }, @{e='confidence';d=$true} | Format-Table -AutoSize)"
-    if (-not $ITBoostData.documents.ContainsKey('matches')) { $ITBoostData.documents['matches'] = @() }
+}
+Write-Host "unresolved folders? $($docToFolder | Sort-Object { -not $_.folder }, @{e='confidence';d=$true} | Format-Table -AutoSize)"
+if (-not $ITBoostData.documents.ContainsKey('matches')) { $ITBoostData.documents['matches'] = @() }
 
 
-    foreach ($company in $groupeddocuments.Keys) {
-        $documentsForCompany = $groupeddocuments[$company]
-        write-host "starting $company with $($documentsForCompany.count) docs"
-        $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
+foreach ($company in $groupeddocuments.Keys) {
+    $documentsForCompany = $groupeddocuments[$company]
+    write-host "starting $company with $($documentsForCompany.count) docs"
+    $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
 
-        if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { continue }
-        foreach ($companydocument in $documentsForCompany){
-            $matchedDocument = $null
-            $matchedDocument = $allHududocuments | Where-Object {
-                $_.company_id -eq $matchedCompany.id -and
-                     $($(test-equiv -A $_.name -B $companydocument.name) -or 
-                     $([double]$(Get-SimilaritySafe -A $_.name -B $companydocument.name) -ge 0.90))} | Select-Object -first 1
-            $matchedDocument = $matchedDocument ?? $($(Get-HuduArticles -CompanyId $matchedCompany.id -name $companydocument.name) | Select-Object -first 1)
-            if ($matcheddocument){
-                Write-Host "matched $($companydocument.name) to doc in Hudu @ $($matchedDocument.url); updating"
-                    $ITBoostData.documents['matches'] += @{
-                        CompanyName      = $companydocument.organization
-                        ITBID            = $companydocument.id
-                        Name             = $companydocument.name
-                        HuduID           = $matcheddocument.id
-                        HuduObject       = $matcheddocument
-                        HuduCompanyId    = $matcheddocument.company_id
-                    }
-                    # continue
-                if ($DeleteDocsMode -and $true -eq $DeleteDocsMode){
-                    if (-not $matchedDocument -or -not $matchedDocument.id -or $matchedDocument.id -lt 1){continue}
-                    write-host "Deleting uploads fo $($matcheddocument.id)"
-                    foreach ($u in $(Get-HuduUploads | where-object {$_.uploadable_type -eq 'Article' -and $_.uploadable_id -eq $matcheddocument.id})){
-                         Invoke-HuduRequest -Method delete -Resource "/api/v1/uploads/$($u.id)"
-                    }
-                    write-host "Deleting doc $($matcheddocument.id)"
-                    if ($matcheddocument.Archived -eq $true){continue}
-                    
-                    try {
-                        Remove-HuduArticle -Id $matchedDocument.id -Confirm:$false
-                    } catch {
-                        Set-HuduArticleArchive -Id $matchedDocument.id
-                    }
+    if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { continue }
+    foreach ($companydocument in $documentsForCompany){
+        $matchedDocument = $null
+        $matchedDocument = $allHududocuments | Where-Object {
+            $_.company_id -eq $matchedCompany.id -and
+                    $($(test-equiv -A $_.name -B $companydocument.name) -or 
+                    $([double]$(Get-SimilaritySafe -A $_.name -B $companydocument.name) -ge 0.90))} | Select-Object -first 1
+        $matchedDocument = $matchedDocument ?? $($(Get-HuduArticles -CompanyId $matchedCompany.id -name $companydocument.name) | Select-Object -first 1)
+        if ($matcheddocument){
+            Write-Host "matched $($companydocument.name) to doc in Hudu @ $($matchedDocument.url); updating"
+                $ITBoostData.documents['matches'] += @{
+                    CompanyName      = $companydocument.organization
+                    ITBID            = $companydocument.id
+                    Name             = $companydocument.name
+                    HuduID           = $matcheddocument.id
+                    HuduObject       = $matcheddocument
+                    HuduCompanyId    = $matcheddocument.company_id
                 }
-
-            }
-            if ($DeleteDocsMode -and $true -eq $DeleteDocsMode){continue}
-
-
-                $imagesCreated = @()
-                $uploadsAdded  = @()
-                $firstHtml = $null
-                $OutFile = "$debug_folder\$($companydocument.resource_id).html"
-
+                # continue
+            if ($DeleteDocsMode -and $true -eq $DeleteDocsMode){
+                if (-not $matchedDocument -or -not $matchedDocument.id -or $matchedDocument.id -lt 1){continue}
+                write-host "Deleting uploads fo $($matcheddocument.id)"
+                foreach ($u in $(Get-HuduUploads | where-object {$_.uploadable_type -eq 'Article' -and $_.uploadable_id -eq $matcheddocument.id})){
+                        Invoke-HuduRequest -Method delete -Resource "/api/v1/uploads/$($u.id)"
+                }
+                write-host "Deleting doc $($matcheddocument.id)"
+                if ($matcheddocument.Archived -eq $true){continue}
                 
-                $newdocumentrequest=@{
-                    Name="$($companydocument.name)".Trim()
-                    CompanyID = $matchedCompany.id
-                    Content="in-transit"
-                }
-                if ($matchedDocument){
-                    $newdocumentrequest["Id"]=$matchedDocument.id
-                }
-
-                $match = Get-DocumentFilesForRow -Row $companydocument -RootDocs $RootDocs -FolderIndex $FolderIndex
-                if (-not $match -or -not $match.files -or $match.files.Count -eq 0) {
-                    Write-Host "WARN, no candidates for '$($companydocument.name)' ($($companydocument.organization))"
-                    continue
-                }
-
-                # categorize once (avoid recomputing)
-                $categorized = $match.files | ForEach-Object {
-                [pscustomobject]@{
-                    File     = $_
-                    Category = Get-ExtensionCategory $_
-                }
-                }
-                $directDocsNeeded =  $($categorized | where-object {$_.Category -eq "Web"})
-                $imagesNeeded = $($categorized | where-object {$_.Category -eq "Image"})
-                
-                if ($AllowConvert -and $sofficePath) {
-                    $uploadsNeeded     = $categorized | Where-Object { $_.Category -in @('NoConvert','Unknown') }
-                    $convertJobsNeeded = $categorized | Where-Object { $_.Category -eq 'Allowed' }
-                } else {
-                    $uploadsNeeded     = $categorized | Where-Object { $_.Category -in @('NoConvert','Unknown','Allowed') }
-                    $convertJobsNeeded = @()
-                }
-
-
-                foreach ($related in @(
-                    @{name="convertables"; count=$convertJobsNeeded.count}
-                    @{name="uploadables"; count=$uploadsNeeded.count}
-                    @{name="images/graphics"; count=$imagesNeeded.count}
-                    @{name="Web/HTML Docs"; count=$directDocsNeeded.count}
-                )){Write-Host "$($related.name) - $($related.count) found for $($companydocument.name)"}
-
-                $DocContents = "See Attachments for $($companydocument.name)"
-                if ($directDocsNeeded.Count -gt 0) {
                 try {
-                      $firstHtmlPath = ($directDocsNeeded[0].File.FullName ?? $directDocsNeeded[0].File)
-                    $DocContents   = Get-Content -LiteralPath $firstHtmlPath -Raw -Encoding UTF8
-                    $firstHtml     = [pscustomobject]@{ Path = $firstHtmlPath; Content = $DocContents }
+                    Remove-HuduArticle -Id $matchedDocument.id -Confirm:$false
                 } catch {
-                    Write-Error "Error getting doc contents $_"
+                    Set-HuduArticleArchive -Id $matchedDocument.id
                 }
-                }
-                $DocContents = As-HtmlString $DocContents
+            }
 
-                # parse with COM safely
-
-
-
-                if ($uploadsNeeded.count -lt 1 -and $imagesNeeded.count -lt 1 -and $convertJobsNeeded.count -lt 1 -and $DocContents -ilike "See Attachments for*"){
-                    write-host "Doc with $($match.files) does not have any content or uploadables!"
-                    continue
-                }
+        }
+        if ($DeleteDocsMode -and $true -eq $DeleteDocsMode){continue}
 
 
-                if (-not $matchedDocument){
-                    $CreatedArticle = New-HuduArticle @newdocumentrequest
-                    $newdocumentrequest["Id"] = $CreatedArticle.article.id ?? $CreatedArticle.id
-                }
+            $imagesCreated = @()
+            $uploadsAdded  = @()
+            $firstHtml = $null
+            $OutFile = "$debug_folder\$($companydocument.resource_id).html"
 
-                # $FoundExistingLinks = Get-LinksFromHTML -htmlContent $DocContents -title "$($companydocument.name)"
+            
+            $newdocumentrequest=@{
+                Name="$($companydocument.name)".Trim()
+                CompanyID = $matchedCompany.id
+                Content="in-transit"
+            }
+            if ($matchedDocument){
+                $newdocumentrequest["Id"]=$matchedDocument.id
+            }
 
-                write-host "$($imagesNeeded.count) images needed for doc $($companydocument.name)"
-                
-                if ($true -eq $AllowConvert -and $sofficePath) {
+            $match = Get-DocumentFilesForRow -Row $companydocument -RootDocs $RootDocs -FolderIndex $FolderIndex
+            if (-not $match -or -not $match.files -or $match.files.Count -eq 0) {
+                Write-Host "WARN, no candidates for '$($companydocument.name)' ($($companydocument.organization))"
+                continue
+            }
 
-                    # todo - convert
-                }
+            # categorize once (avoid recomputing)
+            $categorized = $match.files | ForEach-Object {
+            [pscustomobject]@{
+                File     = $_
+                Category = Get-ExtensionCategory $_
+            }
+            }
+            $directDocsNeeded =  $($categorized | where-object {$_.Category -eq "Web"})
+            $imagesNeeded = $($categorized | where-object {$_.Category -eq "Image"})
+            
+            if ($AllowConvert -and $sofficePath) {
+                $uploadsNeeded     = $categorized | Where-Object { $_.Category -in @('NoConvert','Unknown') }
+                $convertJobsNeeded = $categorized | Where-Object { $_.Category -eq 'Allowed' }
+            } else {
+                $uploadsNeeded     = $categorized | Where-Object { $_.Category -in @('NoConvert','Unknown','Allowed') }
+                $convertJobsNeeded = @()
+            }
 
-                # $existingRelated = Get-Huduuploads | where-object {$_.uploadable_type -eq "Article" -and [string]$_.uploadable_id -eq [string]$newdocumentrequest["Id"]}
-                # IMAGES
-                foreach ($imageUpload in $imagesNeeded) {
-                    # $existingupload = $existingRelated | where-object {test-equiv -A $_.name -B "$([IO.Path]::GetFileName(($imageUpload.File.FullName ?? $imageUpload.File)))".Trim()} | select-object -first 1
-                    # if ($existingupload -and $existingupload.url){
-                    #     Add-REplacement "$([IO.Path]::GetFileName(($up.File.FullName ?? $up.File)))" $existingupload.url
-                    #     write-host "Existing image $($existingupload.url) for $($companydocument.name)"
-                    #     continue
-                    # }
 
-                    $srcPath = Get-AbsolutePath -PathOrInfo $imageUpload.File -BaseFolder $match.folder
-                    if (-not (Test-Path -LiteralPath $srcPath)) { Write-Warning "Missing image: $srcPath"; continue }                    
-                    $imgUp = New-HuduUpload -FilePath $srcPath `
-                                            -Uploadable_Id $newdocumentrequest['Id'] `
-                                            -Uploadable_Type 'Article'
-                    $imgUp = $imgUp.upload ?? $imgUp
-                    if (-not $imgUp) { Write-Host "Error on image $($imageUpload.File)"; continue }
+            foreach ($related in @(
+                @{name="convertables"; count=$convertJobsNeeded.count}
+                @{name="uploadables"; count=$uploadsNeeded.count}
+                @{name="images/graphics"; count=$imagesNeeded.count}
+                @{name="Web/HTML Docs"; count=$directDocsNeeded.count}
+            )){Write-Host "$($related.name) - $($related.count) found for $($companydocument.name)"}
 
-                    $repUrl = $imgUp.public_photo_url ?? $imgUp.publicPhotoUrl ?? $imgUp.url
-                    $fn     = Split-Path -Leaf $imageUpload.File
-                    Add-Replacement $fn $repUrl
-                    foreach ($src in @($imageUpload.SourceUrls)) { if ($src) { Add-Replacement $src $repUrl } }
-                }
+            $DocContents = "See Attachments for $($companydocument.name)"
+            if ($directDocsNeeded.Count -gt 0) {
+            try {
+                    $firstHtmlPath = ($directDocsNeeded[0].File.FullName ?? $directDocsNeeded[0].File)
+                $DocContents   = Get-Content -LiteralPath $firstHtmlPath -Raw -Encoding UTF8
+                $firstHtml     = [pscustomobject]@{ Path = $firstHtmlPath; Content = $DocContents }
+            } catch {
+                Write-Error "Error getting doc contents $_"
+            }
+            }
+            $DocContents = As-HtmlString $DocContents
 
-                # NON-IMAGE UPLOADS
-                foreach ($up in $uploadsNeeded) {
-                    # $existingupload = $existingRelated | where-object {test-equiv -A $_.name -B "$([IO.Path]::GetFileName(($up.File.FullName ?? $up.File)))".Trim()} | select-object -first 1
-                    # if ($existingupload -and $existingupload.url){
-                    #     Add-REplacement "$([IO.Path]::GetFileName(($up.File.FullName ?? $up.File)))" $existingupload.url
-                    #     write-host "Existing upload $($existingupload.url) for $($companydocument.name)"
-                    #     continue
-                    # }
+            # parse with COM safely
 
-                    $srcPath = Get-AbsolutePath -PathOrInfo $up.File -BaseFolder $match.folder
-                    if (-not (Test-Path -LiteralPath $srcPath)) { Write-Warning "Missing upload: $srcPath"; continue }
 
-                    $u = New-HuduUpload -FilePath $srcPath `
+
+            if ($uploadsNeeded.count -lt 1 -and $imagesNeeded.count -lt 1 -and $convertJobsNeeded.count -lt 1 -and $DocContents -ilike "See Attachments for*"){
+                write-host "Doc with $($match.files) does not have any content or uploadables!"
+                continue
+            }
+
+
+            if (-not $matchedDocument){
+                $CreatedArticle = New-HuduArticle @newdocumentrequest
+                $newdocumentrequest["Id"] = $CreatedArticle.article.id ?? $CreatedArticle.id
+            }
+
+            # $FoundExistingLinks = Get-LinksFromHTML -htmlContent $DocContents -title "$($companydocument.name)"
+
+            write-host "$($imagesNeeded.count) images needed for doc $($companydocument.name)"
+            
+            if ($true -eq $AllowConvert -and $sofficePath) {
+
+                # todo - convert
+            }
+
+            # $existingRelated = Get-Huduuploads | where-object {$_.uploadable_type -eq "Article" -and [string]$_.uploadable_id -eq [string]$newdocumentrequest["Id"]}
+            # IMAGES
+            foreach ($imageUpload in $imagesNeeded) {
+                # $existingupload = $existingRelated | where-object {test-equiv -A $_.name -B "$([IO.Path]::GetFileName(($imageUpload.File.FullName ?? $imageUpload.File)))".Trim()} | select-object -first 1
+                # if ($existingupload -and $existingupload.url){
+                #     Add-REplacement "$([IO.Path]::GetFileName(($up.File.FullName ?? $up.File)))" $existingupload.url
+                #     write-host "Existing image $($existingupload.url) for $($companydocument.name)"
+                #     continue
+                # }
+
+                $srcPath = Get-AbsolutePath -PathOrInfo $imageUpload.File -BaseFolder $match.folder
+                if (-not (Test-Path -LiteralPath $srcPath)) { Write-Warning "Missing image: $srcPath"; continue }                    
+                $imgUp = New-HuduUpload -FilePath $srcPath `
                                         -Uploadable_Id $newdocumentrequest['Id'] `
                                         -Uploadable_Type 'Article'
-                    $u = $u.upload ?? $u
-                    if (-not $u) { Write-Host "Error on upload $($up.File)"; continue }
+                $imgUp = $imgUp.upload ?? $imgUp
+                if (-not $imgUp) { Write-Host "Error on image $($imageUpload.File)"; continue }
 
-                    $repUrl = $u.url
-                    $fn     = Split-Path -Leaf $up.File
-                    Add-Replacement $fn $repUrl
-                    foreach ($src in @($up.SourceUrls)) { if ($src) { Add-Replacement $src $repUrl } }
-                }
-                $DocContents.GetType().FullName
-                $DocContents.Length
-                if ($firstHtmlpath) {
-                    $DocContents = Rewrite-InlineLinksAndImages -InFile $firstHtmlPath -Lookup $URLReplacement 
-                } 
-                $newdocumentrequest['Content'] = As-HtmlString $DocContents
-
-                try {
-                    Write-host "$($($newdocumentrequest | convertto-json).ToString())"
-                    $newdocument = $null
-                    $newdocument = Set-HuduArticle @newdocumentrequest
-                    $newdocument = $newdocument.article ?? $newdocument
-                } catch {
-                    write-host "Error creating location: $_"
-                }
-                if ($null -ne $newdocument){
-                    write-host "created document $($companydocument.name) with ID $($newdocument.id) for company $($matchedCompany.name)"
-                    $ITBoostData.documents["matches"]+=@{
-                        CompanyName=$companydocument.organization
-                        ITBID=$companydocument.id
-                        Name=$companydocument.name
-                        HuduID=$newdocument.id
-                        HuduObject=$newdocument
-                        HuduCompanyId=$($matchedcompany.id ?? $newdocument.company_id)
-                        PasswordsToCreate=$($companydocument.password ?? @())
-                    }            
+                $repUrl = $imgUp.public_photo_url ?? $imgUp.publicPhotoUrl ?? $imgUp.url
+                $fn     = Split-Path -Leaf $imageUpload.File
+                Add-Replacement $fn $repUrl
+                foreach ($src in @($imageUpload.SourceUrls)) { if ($src) { Add-Replacement $src $repUrl } }
             }
+
+            # NON-IMAGE UPLOADS
+            foreach ($up in $uploadsNeeded) {
+                # $existingupload = $existingRelated | where-object {test-equiv -A $_.name -B "$([IO.Path]::GetFileName(($up.File.FullName ?? $up.File)))".Trim()} | select-object -first 1
+                # if ($existingupload -and $existingupload.url){
+                #     Add-REplacement "$([IO.Path]::GetFileName(($up.File.FullName ?? $up.File)))" $existingupload.url
+                #     write-host "Existing upload $($existingupload.url) for $($companydocument.name)"
+                #     continue
+                # }
+
+                $srcPath = Get-AbsolutePath -PathOrInfo $up.File -BaseFolder $match.folder
+                if (-not (Test-Path -LiteralPath $srcPath)) { Write-Warning "Missing upload: $srcPath"; continue }
+
+                $u = New-HuduUpload -FilePath $srcPath `
+                                    -Uploadable_Id $newdocumentrequest['Id'] `
+                                    -Uploadable_Type 'Article'
+                $u = $u.upload ?? $u
+                if (-not $u) { Write-Host "Error on upload $($up.File)"; continue }
+
+                $repUrl = $u.url
+                $fn     = Split-Path -Leaf $up.File
+                Add-Replacement $fn $repUrl
+                foreach ($src in @($up.SourceUrls)) { if ($src) { Add-Replacement $src $repUrl } }
+            }
+            $DocContents.GetType().FullName
+            $DocContents.Length
+            if ($firstHtmlpath) {
+                $DocContents = Rewrite-InlineLinksAndImages -InFile $firstHtmlPath -Lookup $URLReplacement 
+            } 
+            $newdocumentrequest['Content'] = As-HtmlString $DocContents
+
+            try {
+                Write-host "$($($newdocumentrequest | convertto-json).ToString())"
+                $newdocument = $null
+                $newdocument = Set-HuduArticle @newdocumentrequest
+                $newdocument = $newdocument.article ?? $newdocument
+            } catch {
+                write-host "Error creating location: $_"
+            }
+            if ($null -ne $newdocument){
+                write-host "created document $($companydocument.name) with ID $($newdocument.id) for company $($matchedCompany.name)"
+                $ITBoostData.documents["matches"]+=@{
+                    CompanyName=$companydocument.organization
+                    ITBID=$companydocument.id
+                    Name=$companydocument.name
+                    HuduID=$newdocument.id
+                    HuduObject=$newdocument
+                    HuduCompanyId=$($matchedcompany.id ?? $newdocument.company_id)
+                    PasswordsToCreate=$($companydocument.password ?? @())
+                }            
         }
     }
 }
+
 $ITBoostData.documents["matches"] | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "MatchedDocuments.json")) -Force

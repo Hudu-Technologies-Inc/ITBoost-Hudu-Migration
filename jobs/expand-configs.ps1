@@ -63,7 +63,6 @@ function Build-RowMergedMap {
 
 $configsLayout = $allHuduLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "config" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "people" -Haystack $_.name)) } | Select-Object -First 1; $configsLayout = $configsLayout.asset_layout ?? $configsLayout
 $ConfigExpansionMethod = $ConfigExpansionMethod ?? $(Select-ObjectFromList -message "Which Expansion Method for Config Data?" -objects @("IPAM-Only","RichText-Field","ALL"))
-$ConfigurationsHaveBeenApplied = $true
 $ConfigsRichTextOverviewField = "Additional Information"
 
 $FieldsAsArrays = @(
@@ -77,10 +76,14 @@ $FieldsAsArrays = @(
 # load companies index if available
 $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
 
-if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHaveBeenApplied){
+if ($ITBoostData.ContainsKey("configurations")){
     $namesSeen = @()   
     $huduCompanies = $huduCompanies ?? $(get-huducompanies)
-    $configsLayout = Get-HuduAssetLayouts -id $configsLayout.id; $configsLayout = $configsLayout.asset_layout ?? $configsLayout
+    $configsLayout = get-huduassetlayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "config" -haystack $_.name) -or $($_.name -ilike "config*")) } | Select-Object -First 1; $configsLayout = $configsLayout.asset_layout ?? $configsLayout;
+    if (-not $configsLayout){
+        Write-error "please apply configs before expanding fields for all found rows."
+    }
+
     if (@("ALL","RichText-Field") -contains $ConfigExpansionMethod){
             $OverviewField = $configsLayout.fields | where-object {$_.label -eq $ConfigsRichTextOverviewField -and $_.field_type -eq "RichText"} | Select-Object -First 1
             if ($OverviewField){
@@ -90,14 +93,14 @@ if ($ITBoostData.ContainsKey("configurations") -and $true -eq $ConfigurationsHav
                 foreach ($f in $configsLayout.fields){
                     $UpdateFields+=$f
                 }
-                $UpdateFields+=@{label=$ConfigsRichTextOverviewField; field_type = "RichText"; show_in_list = $true; required=$false; position=259;}
+                $UpdateFields+=@{label=$ConfigsRichTextOverviewField; field_type = "RichText"; show_in_list=$false; expiration = $false; required=$false; position=259;}
                 Set-HuduAssetLayout -id $configsLayout.id -fields $UpdateFields
                 $configsLayout = Get-HuduAssetLayouts -id $configsLayout.id; $configsLayout = $configsLayout.asset_layout ?? $configsLayout
             }
     }
+    write-host "Please wait, indexing all know assets and all found rows for each config"
+
     $allHuduConfigs = Get-HuduAssets -AssetLayoutId $configsLayout.id
-
-
     $configsFields = $configsLayout.fields
     $uniqueCompanies = $ITBoostData.configurations.CSVData |
         Where-Object { -not [string]::IsNullOrWhiteSpace($_.organization) } | Select-Object -ExpandProperty organization -Unique
