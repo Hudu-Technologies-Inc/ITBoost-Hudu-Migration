@@ -11,6 +11,14 @@ $allHuduPasswords=Get-HuduPasswords
 
 if ($null -eq $internalCompanyId){
     $internalCompanyName = $internalCompanyName ?? "Your internal Company"
+    $internalcompany = $huduCompanies | where-object {$_.name -ieq $internalCompanyName} | select-object -first 1 
+    $internalCompany= $internalCompany.company ?? $internalCompany
+    $internalCompanyId = $internalCompany.id ?? $null
+}
+
+
+if ($null -eq $internalCompanyId){
+    $internalCompanyName = $internalCompanyName ?? "Your internal Company"
     $internalCompany =New-HuduCompany -name "$internalCompanyName" -notes "Auto-created internal company for special attribution during ITBoost migration"
     $huduCompanies = Get-HuduCompanies
     $internalCompany= $internalCompany.company ?? $internalCompany
