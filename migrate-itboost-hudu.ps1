@@ -37,13 +37,13 @@ foreach ($job in @(
 "locations",
 "contacts",
 "websites"
-# "configs",
-# "expand-configs",
-# "documents",
-# "runbooks",
-# "standalone-notes",
-# "gallery",
-# "passwords"
+"configs",
+"expand-configs",
+"documents",
+"runbooks",
+"standalone-notes",
+"gallery",
+"passwords"
 )){
 # foreach ($job in @("get-hududata","read-csvs")){
     $ITBoostData.JobState = @{Status="$job"; StartedAt=$(Get-Date); FinishedAt=$null}
@@ -52,19 +52,19 @@ foreach ($job in @(
     $ITBoostData.FinishedAt=$(Get-Date)
     Write-Host "$($ITBoostData.JobState.Status) Completed"; $ITBoostData.CompletedJobs+=$ITBoostData.JobState;
 }
-# $flexiLayoutsCompleted = $false
-# $flexIdx = 0
-# while ($false -eq $flexiLayoutsCompleted){
-#     $flexIdx++
-#     write-host "Starting flexible asset layouts round ($flexIdx) (optional, but reccomended)"
-#     $ITBoostData.JobState = @{Status="flexi-round-$idx"; StartedAt=$(Get-Date); FinishedAt=$null}
-#     if ("Yes" -eq $(selectobject-fromlist -objects @("yes","No") -message "do you wish to process flexible layouts round-$flexIdx now?")){
-#         . .\jobs\flexi-layout.ps1
-#     } else {
-#         $flexiLayoutsCompleted=$true
-#     }
-#     $ITBoostData.FinishedAt=$(Get-Date)
-#     Write-Host "$($ITBoostData.JobState.Status) Completed"; $ITBoostData.CompletedJobs+=$ITBoostData.JobState;
-# }
-# Write-Host "Wrapping Up"
+$flexiLayoutsCompleted = $false
+$flexIdx = 0
+while ($false -eq $flexiLayoutsCompleted){
+    $flexIdx++
+    write-host "Starting flexible asset layouts round ($flexIdx) (optional, but reccomended)"
+    $ITBoostData.JobState = @{Status="flexi-round-$idx"; StartedAt=$(Get-Date); FinishedAt=$null}
+    if ("Yes" -eq $(selectobject-fromlist -objects @("yes","No") -message "do you wish to process flexible layouts round-$flexIdx now?")){
+        . .\jobs\flexi-layout.ps1
+    } else {
+        $flexiLayoutsCompleted=$true
+    }
+    $ITBoostData.FinishedAt=$(Get-Date)
+    Write-Host "$($ITBoostData.JobState.Status) Completed"; $ITBoostData.CompletedJobs+=$ITBoostData.JobState;
+}
+Write-Host "Wrapping Up"
 # . .\jobs\wrap-up.ps1
