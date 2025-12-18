@@ -36,7 +36,7 @@ foreach ($job in @(
 "companies",
 "locations",
 "contacts",
-"websites"
+"websites",
 "configs",
 "expand-configs",
 "documents",
@@ -58,7 +58,7 @@ while ($false -eq $flexiLayoutsCompleted){
     $flexIdx++
     write-host "Starting flexible asset layouts round ($flexIdx) (optional, but reccomended)"
     $ITBoostData.JobState = @{Status="flexi-round-$idx"; StartedAt=$(Get-Date); FinishedAt=$null}
-    if ("Yes" -eq $(selectobject-fromlist -objects @("yes","No") -message "do you wish to process flexible layouts round-$flexIdx now?")){
+    if ("yes" -ieq $(select-objectfromlist -objects @("yes","No") -message "do you wish to process flexible layouts round-$flexIdx now?")){
         . .\jobs\flexi-layout.ps1
     } else {
         $flexiLayoutsCompleted=$true
@@ -67,4 +67,4 @@ while ($false -eq $flexiLayoutsCompleted){
     Write-Host "$($ITBoostData.JobState.Status) Completed"; $ITBoostData.CompletedJobs+=$ITBoostData.JobState;
 }
 Write-Host "Wrapping Up"
-# . .\jobs\wrap-up.ps1
+. .\jobs\wrap-up.ps1
