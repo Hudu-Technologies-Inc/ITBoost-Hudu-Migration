@@ -184,15 +184,11 @@ foreach ($company in $groupedflexis.Keys) {
                 $bestChoice = ChoseBest-ByName -choices $Listoptions -name $rowVal
 
                 if (-not $bestChoice.name -or [string]::IsNullOrWhiteSpace($bestChoice.name)) {
-                    if (-not $createNewItemsForLists) { continue }
-
-                    Write-Host "Adding new list option: $rowval to listitems for $($matchedList.Name)"
-                    $NewOptions = $Listoptions.name
-                    $NewOptions += $rowVal
-                    Set-HuduList -id $MatchedList.id -name $MatchedList.Name -listItems $NewOptions
-                    $ListMaps["$huduField"] = Get-HuduLists -id $MatchedList.id
-                    Write-Host "Updated list cache with new item, $rowVal"
-                    $setVal = $rowVal
+                    if (-not $createNewItemsForLists) { write-host "list item $($rowVal) is out of range of list, but we arent configured to add to list via $createNewItemsForLists; skipping val"; continue; }
+                    write-host "List item not in range, adding $($rowVal) to list id $($MatchedList.id)..." -ForegroundColor Yellow
+                    $listCache = Refresh-ListCache
+                    Ensure-HuduListItemByName -ListId $MatchedList.id -Name "$($rowVal)".Trim() -listNameExistsByListId $listCache
+                    $setVal = "$($rowVal)".Trim()
                 } else {
                     Write-Host "normalizing rowval $rowVal to best-fit in list $($bestChoice.name)"
                     $setVal = $bestChoice.name
