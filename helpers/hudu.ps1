@@ -173,6 +173,59 @@ function Get-HuduLayoutLike {
   Write-Host "No location layout found. Ensure your location layout name is in LocationLayoutNames array ($LocationLayoutNames)"
   return $null
 }
+
+function Ensure-HuduListItemByName {
+    param(
+        [Parameter(Mandatory)][int]$ListId,
+        [Parameter(Mandatory)][string]$Name,
+        [hashtable]$listNameExistsByListId
+    )
+
+    $nameTrim = $Name.Trim()
+    $needle = $nameTrim.ToLowerInvariant()
+
+    if (-not $listNameExistsByListId.ContainsKey($ListId)) {
+        Refresh-ListCache
+    }
+
+    $map = $listNameExistsByListId[$ListId]
+    if ($map -and $map.ContainsKey($needle)) {
+        return $map[$needle]  # return canonical name as stored
+    }
+
+    # Add item to list
+    $list = Get-HuduLists -Id $ListId
+    $listName = $list.name
+
+    $items = @()
+    foreach ($existing in ($list.list_items ?? @())) {
+        $items += @{ id = [int]$existing.id; name = [string]$existing.name }
+    }
+    $items += @{ name = $nameTrim }
+
+    $null = Set-HuduList -Id $ListId -Name $listName -ListItems $items
+
+    # refresh cache and return
+    $listNameExistsByListId = Refresh-ListCache
+    $map = $listNameExistsByListId[$ListId]
+    if ($map.ContainsKey($needle)) { return $map[$needle] }
+
+    throw "Failed to add/list item '$Name' to list $ListId"
+}
+function Refresh-ListCache {
+    $listNameExistsByListId = @{}
+    foreach ($l in Get-HuduLists) {
+        $lid = [int]$l.id
+        $map = @{}
+        foreach ($it in ($l.list_items ?? @())) {
+            if ($it.name) {
+                $map[$it.name.ToString().Trim().ToLowerInvariant()] = [string]$it.name
+            }
+        }
+        $listNameExistsByListId[$lid] = $map
+    }
+    return $listNameExistsByListId
+}
 function Get-HuduCompanyFromName {
     # use index first. Then existing list. Then API call.
     param (
