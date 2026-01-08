@@ -2,10 +2,6 @@
 
 Easy Migration from ITBoost to Hudu
 
-> **Permissions Notice**
->
-> Some scripts may require elevated permissions. If you encounter access-related errors, consider launching PowerShell (`pwsh`) with **Run as Administrator**.
-
 ### Prerequisites
 
 - Hudu Instance of 2.38.0 or newer
@@ -14,6 +10,11 @@ Easy Migration from ITBoost to Hudu
 - Powershell 7.5.1 or later on Windows PC
 - Libreoffice
 
+## Before Starting 
+
+> **Permissions Notice**
+>
+> Some scripts may require elevated permissions. If you encounter access-related errors, consider launching PowerShell (`pwsh`) with **Run as Administrator**.
 
 ## Getting Started
 
