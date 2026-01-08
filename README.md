@@ -2,6 +2,9 @@
 
 Easy Migration from ITBoost to Hudu
 
+> **Permissions Notice**
+>
+> Some scripts may require elevated permissions. If you encounter access-related errors, consider launching PowerShell (`pwsh`) with **Run as Administrator**.
 
 ### Prerequisites
 
