@@ -25,8 +25,13 @@ Get-PSVersionCompatible; Get-HuduModule; Set-HuduInstance; Get-HuduVersionCompat
 if ($null -eq $UseSimpleMap){$UseSimpleMap = $true}
 $mergeOnMatch = $mergeOnMatch ?? $("yes" -eq $(Select-Objectfromlist -objects @("yes","no") -message "When matches are found, do you want to merge data from ITBoost into Hudu (yes) or skip asset and keep existing Hudu data (no)?"))
 $skipInactive = $skipInactive ?? $("yes" -eq $(Select-Objectfromlist -objects @("yes","no") -message "When inactive assets are found, do you want to skip them (yes) or include them (no)?"))
-if ($true -eq $mergeOnMatch){$preferOrginal = $(select-objectfromlist -objects @("ITBoost","Hudu") -message "When merging on match, which data source do you want to prefer for field values?")} else {$preferOrginal = $false}
+if ($true -eq $mergeOnMatch){$preferOrginal = $preferOrginal ?? $(select-objectfromlist -objects @("ITBoost","Hudu") -message "When merging on match, which data source do you want to prefer for field values?")} else {$preferOrginal = $false}
 
+read-host @"
+Merging on Match is set to: $mergeOnMatch
+Skip Inactive is set to: $skipInactive
+Prefer Original is set to: $preferOrginal
+"@ -foregroundcolor cyan
 
 ## grab the csv data
 $ITBoostData=@{
@@ -40,15 +45,7 @@ foreach ($job in @(
 "get-hududata",
 "companies",
 "locations",
-"contacts",
-"websites",
-"configs",
-"expand-configs",
-"documents",
-"runbooks",
-"standalone-notes",
-"gallery",
-"passwords"
+"contacts"
 )){
 # foreach ($job in @("get-hududata","read-csvs")){
     $ITBoostData.JobState = @{Status="$job"; StartedAt=$(Get-Date); FinishedAt=$null}
@@ -71,5 +68,5 @@ while ($false -eq $flexiLayoutsCompleted){
     $ITBoostData.FinishedAt=$(Get-Date)
     Write-Host "$($ITBoostData.JobState.Status) Completed"; $ITBoostData.CompletedJobs+=$ITBoostData.JobState;
 }
-Write-Host "Wrapping Up"
-. .\jobs\wrap-up.ps1
+# Write-Host "Wrapping Up"
+# . .\jobs\wrap-up.ps1

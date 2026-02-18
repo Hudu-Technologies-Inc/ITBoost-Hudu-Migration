@@ -4,6 +4,7 @@ $LocationsMap = @{
 fax = "Special Information"
 notes = "Notes"
 phone = "Front Desk Phone Number"
+id = "ITBID"
 
 }
 #  label Location - type AddressData
@@ -14,22 +15,10 @@ phone = "Front Desk Phone Number"
 #  label Door Code - type Text
 #  label Special Information - type Text
 #  label Notes - type RichText
+# ITBID - ID
 
 
 # CsvRow
-# fax
-# name
-# notes
-# organization
-# password
-# phone
-# postal_code
-# primary
-# region
-# resource_id
-# resource_type
-
-
 
 
 $huduCompanies = $huduCompanies ?? $(get-huducompanies)
@@ -133,7 +122,7 @@ if ($ITBoostData.ContainsKey("locations")){
                     $NewAddressRequest["Fields"]=$fields
                 }
             }
-            if ($null -ne $matchedlocation){
+            if ($null -ne $matchedlocation -and $matchedlocation.id -gt 0 -and $true -eq $mergeOnMatch){
                 write-host "merging on match..."
                 $merged = Merge-Matches -originalAsset $matchedlocation -newFields $fields -destassetlayout $LocationLayout -preferOriginal ($preferOriginal ?? $true)
                 $NewAddressRequest["Fields"]=$merged.Fields

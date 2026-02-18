@@ -101,7 +101,7 @@ foreach ($company in $uniqueCompanies) {
             AssetLayoutId = $configsLayout.id
         }
 
-        if ($null -ne $matchedConfig) {
+        if ($null -ne $matchedConfig -and $false -eq $mergeOnMatch){
                     $ITBoostData.configurations['matches'] += @{
                         CompanyName      = $companyConfig.organization
                         CsvRow           = $companyConfig.CsvRow

@@ -173,7 +173,7 @@ foreach ($company in $groupedContacts.Keys) {
                 $fields+=@{"$SmooshPropsTo" ="$notes`n$contactNotes"}
             }
         }
-        if ($null -ne $matchedcontact){
+        if ($null -ne $matchedcontact -and $matchedcontact.id -gt 0 -and $true -eq $mergeOnMatch){
             write-host "merging on match..."
             $merged = Merge-Matches -originalAsset $matchedcontact -newFields $fields -destassetlayout $contactsLayout -preferOriginal ($preferOriginal ?? $true)
             $newcontactrequest["Fields"]=$merged.Fields
