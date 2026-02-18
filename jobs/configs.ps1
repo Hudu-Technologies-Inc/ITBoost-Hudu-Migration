@@ -21,6 +21,38 @@ $configsMap = @{
     configuration_interfaces = "configuration interfaces"
 }
 
+# asset_tag
+# configuration_interfaces
+# configuration_status
+# configuration_type
+# contact
+# default_gateway
+# hostname
+# id
+# installed_at
+# installed_by
+# ITBNotes
+# location
+# mac_address
+# macAddress
+# manufacturer
+# model
+# modelo
+# name
+# notes
+# operating_system
+# operating_system_notes
+# organization
+# password
+# position
+# primary_ip
+# purchased_at
+# purchased_by
+# resource_id
+# resource_type
+# serial_number
+# warranty_expires_at
+
 $ConfigurationsHaveBeenApplied=$false
 $ConfigsRichTextOverviewField = "Additional Information"
 $OverviewField = $configsLayout.fields | where-object {$_.label -eq $ConfigsRichTextOverviewField -and $_.field_type -eq "RichText"} | Select-Object -First 1
@@ -179,5 +211,6 @@ foreach ($company in $uniqueCompanies) {
 }
 
 }
+$allHuduConfigs = Get-HuduAssets -AssetLayoutId $configsLayout.id
 
 $ITBoostData.configurations["matches"] | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "MatchedConfigurations.json")) -Force

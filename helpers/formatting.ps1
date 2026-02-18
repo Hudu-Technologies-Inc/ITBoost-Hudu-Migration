@@ -558,7 +558,93 @@ function Get-RelatedFromITBoostUUID {
     return $null
 }
 
+function layout2layout{
+param (
+    [string]$sourceLayoutName = "",
+    [string]$targetLayoutName = "",
+    $sourceAssets = $null
+)
 
+    # usage- move assets between same-field layouts
+    # particularly useful for un-splitting split-configurations from ITG
+
+    if ([string]::isnullorempty($sourceLayoutName) -or [string]::isnullorempty($targetLayoutName)) {
+        write-error "sourceLayoutName and targetLayoutName parameters are required"
+        exit 1
+    }
+    write-host "starting layout to layout move from '$sourceLayoutName' to '$targetLayoutName'"
+    
+    $results = $results ?? @()
+    $sourcelayout = Get-HuduASsetlayouts -name $sourceLayoutName | select-object -first 1
+    $targetLayout = Get-HuduASsetlayouts -name $targetLayoutName | select-object -first 1
+    $sourceLayout = $sourcelayout.asset_layout ?? $sourcelayout
+    $targetLayout = $targetLayout.asset_layout ?? $targetLayout
+
+    $sourceLayoutID= $sourceLayout.id
+    $targetLayoutId = $targetLayout.id
+    if (-not $sourceLayoutID -or -not $targetLayoutId) {
+        write-error "source or target layout not found"
+        exit 1
+    }
+
+    function Move-HuduAssetToNewLayout {
+        Param ([Int]$targetLayoutId,[Int]$Id)
+        $asset = Get-HuduAssets -id $Id; $asset = $asset.asset ?? $asset;
+        if (-not $asset) {throw "Asset with id $Id not found"}
+        try {$moved = $(Invoke-HuduRequest -Method put -Resource "/api/v1/companies/$($asset.company_id)/assets/$($asset.id)/move_layout" -Body $($([pscustomobject]@{asset_layout_id = $targetLayoutId}) | ConvertTo-Json -Depth 10))
+            return $moved
+        } catch {
+            throw $_
+        }
+    }
+
+    foreach ($l in $(get-huduassetlayouts -id $sourceLayoutID)){
+        write-host "starting movements for $($l.name), obtaining assets"
+        $allassets = $sourceAssets ?? $(Get-HuduAssets -AssetLayoutId $l.id)
+        write-host "$($allassets.count) assets found, moving to layout id $targetLayoutId"
+        foreach ($a in $allassets){
+            try {
+            $result = $null
+            $result = Move-HuduAssetToNewLayout -id $a.id -targetLayoutId $targetLayoutId
+            } catch {
+                $result = @{
+                    assetId = $a.id
+                    companyId = $a.company_id
+                    status = "error"
+                    message = $_.exception.message
+                }
+                read-host "error moving asset id $($a.id) for company id $($a.company_id): $($_.exception.message)" 
+            } finally {
+                $results += $result
+            }
+
+        }
+    }
+    return $results
+
+}
+function Copy-LayoutFieldPayload($Field){
+  $o = [ordered]@{
+    label        = $Field.label
+    field_type   = $Field.field_type
+    required     = [bool]$Field.required
+    show_in_list = [bool]($Field.show_in_list ?? $true)
+    position     = [int]($Field.position ?? 0)
+  }
+  if ($null -ne $field.hint) {
+    $o.hint = [string]$Field.hint
+  }
+  if ($null -ne $field.linkable_id) {
+    $o.linkable_id = [int]$Field.linkable_id
+  }
+  if ($Field.field_type -eq 'ListSelect' -and $Field.PSObject.Properties['list_id']) {
+    $o.list_id = [int]$Field.list_id
+    if ($Field.PSObject.Properties['multiple_options']) {
+      $o.multiple_options = [bool]$Field.multiple_options
+    }
+  }
+  $o
+}
 function Get-CSVProperties {
     param ([array]$csvRows)
     return $csvRows |

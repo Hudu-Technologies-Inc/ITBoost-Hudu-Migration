@@ -78,7 +78,7 @@ function Build-HuduContactIndex {
 $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
 if (-not $ITBoostData.contacts.ContainsKey('matches')) { $ITBoostData.contacts['matches'] = @() }
 
-$contactsLayout = $(get-huduassetlayouts) | Where-Object { $_.name -ilike "*people*" -or $_.name -ilike "*contacts*" } | Select-Object -First 1
+$contactsLayout = $(get-huduassetlayouts) | Where-Object { $_.name -ieq "people" -or $_.name -ieq "contacts" } | Select-Object -First 1
 if (-not $contactsLayout){
     $StatusList = Get-HuduLists | Where-Object {$_.name -ieq "People Status" -or $_.name -ieq "Contact Status"} | Select-Object -First 1
     $statusList = $StatusList ?? $(new-hudulist -name "People Status" -items @("ACTIVE", "INACTIVE (DO NOT SERVICE)", "Leave", "Terminated", "Onboarding"))
