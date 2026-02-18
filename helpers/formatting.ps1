@@ -318,7 +318,7 @@ function Merge-Matches {
         $matchedMap     = FieldListToMap $originalAsset.fields
         if ($null -ne $matchedmap -and $matchedmap.count -gt 0){
             $transformedMap = Convert-FieldArrayToMap $newFields
-            $finalMap = Merge-FieldMaps -TransformedMap $transformedMap -MatchedMap $matchedMap -LayoutFields $destassetlayout.fields
+            $finalMap = Merge-FieldMaps -TransformedMap $transformedMap -MatchedMap $matchedMap -LayoutFields $destassetlayout.fields -preferOriginal $preferOriginal
             $returningFields = $(MapToFieldList -Map $finalMap -LayoutFields $destassetlayout.fields)
         }
     }

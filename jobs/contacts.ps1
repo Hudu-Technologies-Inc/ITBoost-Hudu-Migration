@@ -123,10 +123,8 @@ foreach ($company in $groupedContacts.Keys) {
         $matchedContact = $matchedcontact ??  $(Get-HuduAssets -AssetLayoutId $contactsLayout.id -CompanyId $matchedCompany.id -Name $humanName | Select-Object -First 1)
         $matchedcontact = $matchedContact.asset ?? $matchedContact
 
-        if ($null -ne $matchedcontact){
+        if ($null -ne $matchedcontact -and $false -eq $mergeOnMatch){
             Write-Host "Matched $humanName to $($matchedcontact.name) for $($matchedCompany.name)"
-
-            # ensure the array exists once
             $ITBoostData.contacts['matches'] += @{
                 CompanyName      = $companyContact.organization
                 ITBID            = $companyContact.id
@@ -158,9 +156,7 @@ foreach ($company in $groupedContacts.Keys) {
             if (-not $([string]::IsNullOrWhiteSpace($companyContact.location))){
                 $matchedLocation = $null
                 $matchedLocation = $allHuduLocations | Where-Object { $_.company_id -eq $matchedCompany.id -and $(test-equiv -A ($_.name -as [string]) -B $companyContact.location) } | Select-Object -First 1    
-                # $matchedlocation = Get-HuduAssets -AssetLayoutId ($LocationLayout.id ?? 2) -CompanyId $matchedCompany.id |
-                #                     Where-Object { test-equiv -A $_.name -B $companyContact.location } |
-                #                     Select-Object -First 1
+
                 if ($matchedlocation){
                     $fields+=@{"Location" = "[$($matchedlocation.id)]"}
                 }
@@ -177,15 +173,26 @@ foreach ($company in $groupedContacts.Keys) {
                 $fields+=@{"$SmooshPropsTo" ="$notes`n$contactNotes"}
             }
         }
+        if ($null -ne $matchedcontact){
+            write-host "merging on match..."
+            $merged = Merge-Matches -originalAsset $matchedcontact -newFields $fields -destassetlayout $contactsLayout -preferOriginal ($preferOriginal ?? $true)
+            $newcontactrequest["Fields"]=$merged.Fields
+            $newcontactrequest["id"]=$matchedcontact.id
+        }
+                    
         # add all fields
         $newcontactrequest['Fields'] = $fields
         try {
             $newContact = $null
-            $newContact = New-Huduasset @newcontactrequest
+            if ($null -ne $newcontactrequest.id){
+                $newContact = Set-Huduasset @newcontactrequest
+            } else {
+                $newContact = New-Huduasset @newcontactrequest
+            }
             $newContact = $newContact.asset ?? $newContact
             write-host "Created new contact $($newContact.name) with ID $($newContact.id) for company $($matchedCompany.name)"
         } catch {
-            write-host "Error creating location: $_"
+            write-host "Error $(if ($null -ne $matchedcontact) { "merging on match" } else { "creating new" }) contact: $_"
         }
         
         if ($null -ne $newContact){
