@@ -6,15 +6,14 @@ notes = "Notes"
 phone = "Front Desk Phone Number"
 
 }
-# addressdata field for address
-# Location
-# Primary POC
-# Front Desk Phone Number
-# Office Email
-# Hours of Operation
-# Door Code
-# Special Information
-# Notes
+#  label Location - type AddressData
+#  label Primary POC - type AssetTag
+#  label Front Desk Phone Number - type Phone
+#  label Office Email - type Email
+#  label Hours of Operation - type Text
+#  label Door Code - type Text
+#  label Special Information - type Text
+#  label Notes - type RichText
 
 # address_1
 # address_2
@@ -66,7 +65,7 @@ if ($ITBoostData.ContainsKey("locations")){
     $AddressDataField = $($locationfields | where-object {$_.field_type -eq "AddressData"} | select-object -first 1).label ?? $null
 
     $groupedLocations = $ITBoostData.locations.CSVData | Group-Object { $_.organization } -AsHashTable -AsString
-    `
+    
     $allHuduLocations = Get-HuduAssets -AssetLayoutId $LocationLayout.id
     
     foreach ($company in $groupedLocations.Keys){
