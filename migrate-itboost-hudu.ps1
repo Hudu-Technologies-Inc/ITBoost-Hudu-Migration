@@ -23,6 +23,11 @@ foreach ($requiredpath in @($TMPbasedir, $debug_folder)){Get-EnsuredPath -path $
 Get-PSVersionCompatible; Get-HuduModule; Set-HuduInstance; Get-HuduVersionCompatible;
 
 if ($null -eq $UseSimpleMap){$UseSimpleMap = $true}
+$mergeOnMatch = $mergeOnMatch ?? $("yes" -eq $(Select-Objectfromlist -objects @("yes","no") -message "When matches are found, do you want to merge data from ITBoost into Hudu (yes) or skip asset and keep existing Hudu data (no)?"))
+$skipInactive = $skipInactive ?? $("yes" -eq $(Select-Objectfromlist -objects @("yes","no") -message "When inactive assets are found, do you want to skip them (yes) or include them (no)?"))
+if ($true -eq $mergeOnMatch){$preferOrginal = $(select-objectfromlist -objects @("ITBoost","Hudu") -message "When merging on match, which data source do you want to prefer for field values?")} else {$preferOrginal = $false}
+
+
 ## grab the csv data
 $ITBoostData=@{
     JobState=@{}

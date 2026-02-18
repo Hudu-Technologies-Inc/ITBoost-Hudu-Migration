@@ -298,6 +298,53 @@ function Normalize-WebURL {
     return ("https://$Url").TrimEnd('/','\')
 }
 
+function Merge-Matches {
+    param (
+        [PSCustomObject]$originalAsset,
+        $newFields,
+        [PSCustomObject]$destassetlayout,
+        [hashtable]$newAssetProps = @{},
+        [bool]$preferOriginal = $true
+    )
+    $returningFields = $null; $propsToReturn = @{}
+    if ($null -eq $originalAsset.fields -or $originalAsset.fields.count -eq 0) {
+        write-host "No original fields found on asset, using transformed fields as-is"
+        $returningFields = $newFields
+    } elseif ($null -eq $newFields -or $newFields.count -eq 0) {
+        write-host "No new fields to merge, using original fields as-is"
+        $returningFields = $originalAsset.fields
+    } else {
+        write-host "Merging transformed fields with original asset fields, preferOriginal=$preferOriginal"
+        $matchedMap     = FieldListToMap $originalAsset.fields
+        if ($null -ne $matchedmap -and $matchedmap.count -gt 0){
+            $transformedMap = Convert-FieldArrayToMap $newFields
+            $finalMap = Merge-FieldMaps -TransformedMap $transformedMap -MatchedMap $matchedMap -LayoutFields $destassetlayout.fields
+            $returningFields = $(MapToFieldList -Map $finalMap -LayoutFields $destassetlayout.fields)
+        }
+    }
+    $propPairs = @(
+        @{ Dest = 'PrimarySerial';       Source = 'primary_serial' }
+        @{ Dest = 'PrimaryMail';         Source = 'primary_mail' }
+        @{ Dest = 'PrimaryModel';        Source = 'primary_model' }
+        @{ Dest = 'PrimaryManufacturer'; Source = 'primary_manufacturer' }
+    )
+    foreach ($pairing in $propPairs) {
+        if ($true -eq $preferOriginal) {
+            $commonPropValue = $originalAsset.($pairing.Source) ?? $newAssetProps.($pairing.Source)
+        } else {
+            $commonPropValue = $newAssetProps.($pairing.Source) ?? $originalAsset.($pairing.Source)
+        }
+        
+        if (-not [string]::IsNullOrEmpty("$commonPropValue")) {
+            $propsToReturn[$pairing.Dest] = $commonPropValue
+        }
+    }
+    return [PSCustomObject]@{
+        Fields = $returningFields
+        AssetProps = $propsToReturn
+    }
+}
+
 
 function Get-CastIfNumeric {
     param(

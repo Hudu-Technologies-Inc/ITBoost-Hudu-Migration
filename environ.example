@@ -2,6 +2,8 @@ $HuduBaseURL="yoururl.huducloud.com"
 $HuduAPIKey="huduapikey"
 $ITBoostExportPath="X:\yourexportpath"
 $TMPbasedir="X:\designatedpersistenttempdir"
-
+$mergeOnMatch=$false # if a match is found in target layout, merge source csv record into existing dest asset (if not, we skip)
+$skipInactive=$true # can skip or keep inactive items
+$preferOrginal = $false # if merging, do you prefer data from source (itb) or existing asset in hudu
 $internalCompanyName = "Myinternal Company"
 . .\migrate-itboost-hudu.ps1

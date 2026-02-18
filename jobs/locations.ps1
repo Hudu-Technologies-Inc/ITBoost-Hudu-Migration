@@ -79,13 +79,12 @@ if ($ITBoostData.ContainsKey("locations")){
         # $matchedCompany=$matchedCompany ?? $($huducompanies | where-object {$_.name -eq $(Select-ObjectFromList -objects $($huduCompanies.name | sort-object) -message "Which company to match for source company, named $company")} | select-object -first 1)
         write-host "$($locationsForCompany.count) locations for $company, hudu company id: $($matchedCompany.id)"
         foreach ($companyLocation in $locationsForCompany){
-
             if ($locationsSeen -contains $companyLocation.name){continue} else {$locationsSeen+="$($companyLocation.name)"}
             $matchedlocation = $null
             $matchedlocation = $allHuduLocations | Where-Object {(test-equiv -A $_.name -B $companyLocation.name) -and $_.company_id -eq $matchedCompany.id} | Select-Object -First 1
             $matchedlocation = $matchedlocation ?? $(get-huduassets -AssetLayoutId $LocationLayout.id -CompanyId $matchedCompany.id -name $companyLocation.name | select-object -first 1)
             $matchedlocation = $matchedlocation.asset ?? $matchedlocation
-            if ($null -ne $matchedlocation){
+            if ($null -ne $matchedlocation -and $false -eq $mergeOnMatch){
                 Write-Host "Matched $($companyLocation.name) to $($matchedlocation.name) for $($matchedCompany.name)"
                 $ITBoostData.locations["matches"]+=@{
                     CompanyName=$companyLocation.organization
@@ -134,13 +133,24 @@ if ($ITBoostData.ContainsKey("locations")){
                     $NewAddressRequest["Fields"]=$fields
                 }
             }
+            if ($null -ne $matchedlocation){
+                write-host "merging on match..."
+                $merged = Merge-Matches -originalAsset $matchedlocation -newFields $fields -destassetlayout $LocationLayout -preferOriginal ($preferOriginal ?? $true)
+                $NewAddressRequest["Fields"]=$merged.Fields
+                $NewAddressRequest["id"]=$matchedlocation.id
+            }
+            
 
             try {
                 $newLocation = $null
-                $newLocation = New-Huduasset @NewAddressRequest
+                if ($null -ne $NewAddressRequest.id){
+                    $newlocation = set-huduasset @NewAddressRequest
+                } else {
+                    $newLocation = New-Huduasset @NewAddressRequest
+                }
                 $newLocation = $newLocation.asset ?? $newLocation
             } catch {
-                write-host "Error creating location: $_"
+                write-host "Error $(if ($null -ne $matchedlocation) { "merging on match" } else { "creating new" }) location: $_"
             }
             if ($newLocation){
                 write-host "created location $($companyLocation.name) with ID $($newLocation.id) for company $($matchedCompany.name)"
