@@ -2,6 +2,7 @@
 if (-not $ITBoostData.ContainsKey('Internal Notes for PCA Only')){write-host "No direct notes data in csvs, skppping"; exit 0}
 
 $articlesFromSTandalonenotes = @{}
+    $LocationLayout = $locationlayout ?? $(Get-HuduAssetLayouts | Where-Object { $_.name -ieq "location" -or $_.name -ieq "locations" } | Select-Object -First 1); $LocationLayout = $LocationLayout.asset_layout ?? $LocationLayout;
 
 foreach ($noteEntry in $ITBoostData.Notes.CSVData){
     $articleRequest = @{

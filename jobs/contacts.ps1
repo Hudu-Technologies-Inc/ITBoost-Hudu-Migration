@@ -4,12 +4,29 @@ primary_email = "Email Address"
 contact_type="Contact Type"
 primary_phone = "Office Phone number (DID)"
 title = "Title"
+id = "ITBID"
 }
 $smooshToNotesProps = @("notes","resource_type","contact_type","relationship","additional_contact_items")
 $SmooshPropsTo = "Notes"
+# additional_contact_items
+# companyUuid
+# contact_type
+# first_name
+# id
+# last_name
+# location
+# notes
+# organization
+# password
+# primary_email
+# primary_phone
+# relationship
+# resource_id
+# resource_type
+# title
+# types
 
-
-$LocationLayout = $LocationLayout ?? (Get-HuduAssetLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "location" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "locations" -Haystack $_.name)) } | Select-Object -First 1)
+$LocationLayout = $locationlayout ?? $(Get-HuduAssetLayouts | Where-Object { $_.name -ieq "location" -or $_.name -ieq "locations" } | Select-Object -First 1); $LocationLayout = $LocationLayout.asset_layout ?? $LocationLayout;
 
 function Build-HuduContactIndex {
   [CmdletBinding()]
@@ -90,7 +107,8 @@ if (-not $contactsLayout){
     @{label="Workstation used";   show_in_list=$false;   field_type="Text";required=$false;   hint="What workstation is used?";   position=11},
     @{label="Notes";   show_in_list=$false;   field_type="RichText";required=$false;   hint="";   position=12},
     @{label="IP Address of Primary Computer";   show_in_list=$false;   field_type="Website";required=$false;   hint="";   linkable_id=5;   position=13},
-    @{label="Location";   show_in_list=$true;   field_type="AssetTag";required=$false;   hint="";   linkable_id=$LocationLayout.id;   multiple_options=$false; position=14}
+    @{label="Location";   show_in_list=$true;   field_type="AssetTag";required=$false;   hint="";   linkable_id=$LocationLayout.id;   multiple_options=$false; position=14},
+    @{label="ITBID";   show_in_list=$false;   field_type="text";required=$false;   hint="ID from ITBoost";  multiple_options=$false; position=17}
     ) -Icon "fas fa-users" -IconColor "#ffffff" -Color "#6136ff" -IncludePasswords $true -IncludePhotos $true -IncludeComments $true -IncludeFiles $true).asset_layout
     $contactsLayout = $contactsLayout.asset_layout ?? $contactsLayout
     $null = Set-HuduAssetLayout -id $contactsLayout.id -Active $true

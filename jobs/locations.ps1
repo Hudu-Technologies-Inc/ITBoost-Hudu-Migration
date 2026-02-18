@@ -5,7 +5,6 @@ fax = "Special Information"
 notes = "Notes"
 phone = "Front Desk Phone Number"
 id = "ITBID"
-
 }
 #  label Location - type AddressData
 #  label Primary POC - type AssetTag
@@ -28,7 +27,7 @@ $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ??
 if ($ITBoostData.ContainsKey("locations")){
     if (-not $ITBoostData.locations.ContainsKey('matches')) { $ITBoostData.locations['matches'] = @() }
 
-    $LocationLayout = Get-HuduAssetLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "location" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "locations" -Haystack $_.name)) } | Select-Object -First 1
+    $LocationLayout = Get-HuduAssetLayouts | Where-Object { $_.name -ieq "location" -or $_.name -ieq "locations" } | Select-Object -First 1; $LocationLayout = $LocationLayout.asset_layout ?? $LocationLayout;
 
     if (-not $LocationLayout){
         $locationlayout=$(New-HuduAssetLayout -name "location" -Fields @(

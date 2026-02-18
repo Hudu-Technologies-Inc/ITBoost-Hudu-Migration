@@ -52,7 +52,7 @@ if ($smooshLabels -and $smooshLabels.count -gt 0){
 
 # load companies index if available
 $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
-$LocationLayout = Get-HuduAssetLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "location" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "locations" -Haystack $_.name)) } | Select-Object -First 1
+$LocationLayout = $locationlayout ?? $(Get-HuduAssetLayouts | Where-Object { $_.name -ieq "location" -or $_.name -ieq "locations" } | Select-Object -First 1); $LocationLayout = $LocationLayout.asset_layout ?? $LocationLayout;
 
 if (-not $ITBoostData.ContainsKey("$sourceProperty")){write-host "No data for $sourceproperty"; exit 1}
 if ($usingExistingLayout -and $existingLayout) {
