@@ -15,13 +15,9 @@ phone = "Front Desk Phone Number"
 #  label Special Information - type Text
 #  label Notes - type RichText
 
-# address_1
-# address_2
-# city
-# country
+
 # CsvRow
 # fax
-# id
 # name
 # notes
 # organization
@@ -63,7 +59,9 @@ if ($ITBoostData.ContainsKey("locations")){
 
     $locationfields = $LocationLayout.fields
     $AddressDataField = $($locationfields | where-object {$_.field_type -eq "AddressData"} | select-object -first 1).label ?? $null
-
+    if ($null -ne $AddressDataField){
+        write-host "Meta-Mapping AddressData field from CSV for locations: $AddressDataField"
+    }
     $groupedLocations = $ITBoostData.locations.CSVData | Group-Object { $_.organization } -AsHashTable -AsString
     
     $allHuduLocations = Get-HuduAssets -AssetLayoutId $LocationLayout.id
@@ -135,10 +133,7 @@ if ($ITBoostData.ContainsKey("locations")){
                     $fields+=@{$AddressDataField = $newAddress}
                     $NewAddressRequest["Fields"]=$fields
                 }
-
             }
-
-
 
             try {
                 $newLocation = $null

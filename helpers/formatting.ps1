@@ -147,6 +147,114 @@ function Get-ValueFromCSVKeyVariants {
     return $prop.Value
 }
 
+function Convert-FieldArrayToMap {
+    param([Parameter(Mandatory)][object[]]$FieldArray)
+
+    $map = @{}
+    foreach ($ht in $FieldArray) {
+        if ($ht -isnot [hashtable] -and $ht -isnot [System.Collections.IDictionary]) { continue }
+        foreach ($k in $ht.Keys) {
+            $map[$k] = $ht[$k]
+        }
+    }
+    return $map
+}
+
+function Merge-FieldMaps {
+    param(
+        [Parameter(Mandatory)][hashtable]$TransformedMap,
+        [Parameter(Mandatory)][hashtable]$MatchedMap,
+        [Parameter(Mandatory)][object[]]$LayoutFields,   # destassetlayout.fields
+        [bool]$preferOriginal = $true,
+        [string]$RichTextSeparator = "`n`n---`n`n"
+    )
+
+    # Build label -> field_type lookup once
+    $typeByLabel = @{}
+    foreach ($lf in $LayoutFields) {
+        if ($lf.label) { $typeByLabel[$lf.label] = ($lf.field_type ?? $lf.type) }
+    }
+
+    $out = @{}
+    $allLabels = @($TransformedMap.Keys + $MatchedMap.Keys) | Select-Object -Unique
+
+    foreach ($label in $allLabels) {
+        $t = $TransformedMap[$label]
+        $m = $MatchedMap[$label]
+        $fieldType = $typeByLabel[$label]
+
+        $tBlank = [string]::IsNullOrWhiteSpace([string]$t)
+        $mBlank = [string]::IsNullOrWhiteSpace([string]$m)
+
+        if ($fieldType -eq "RichText") {
+            if (-not $tBlank -and -not $mBlank) {
+                $out[$label] = ([string]$t) + $RichTextSeparator + ([string]$m)
+            } elseif (-not $tBlank) {
+                $out[$label] = $t
+            } elseif (-not $mBlank) {
+                $out[$label] = $m
+            }
+            continue
+        }
+
+        # Non-richtext: prefer transformed unless it's blank
+        if ($preferOriginal) {
+            if (-not $mBlank) {
+                $out[$label] = $m
+            } elseif (-not $tBlank) {
+                $out[$label] = $t
+            }
+            continue
+        } else {
+            if (-not $tBlank) {
+                $out[$label] = $t
+            } elseif (-not $mBlank) {
+                $out[$label] = $m
+            }
+            continue
+        }
+    }
+
+    return $out
+}
+function FieldListToMap {
+    param([object[]]$FieldList)
+
+    $map = @{}
+    foreach ($ht in ($FieldList ?? @())) {
+        if ($ht -isnot [System.Collections.IDictionary]) { continue }
+        foreach ($k in $ht.Keys) {
+            $map[$k] = $ht[$k]   # last wins
+        }
+    }
+    $map
+}
+
+function MapToFieldList {
+    param(
+        [hashtable]$Map,
+        [object[]]$LayoutFields = $null  # optional for ordering
+    )
+
+    $out = @()
+
+    if ($LayoutFields) {
+        foreach ($lf in $LayoutFields) {
+            $label = $lf.label
+            if ($label -and $Map.ContainsKey($label)) {
+                $out += @{ $label = $Map[$label] }
+            }
+        }
+        # include any extras not in layout
+        foreach ($k in $Map.Keys | Where-Object { $_ -notin ($LayoutFields.label) }) {
+            $out += @{ $k = $Map[$k] }
+        }
+    } else {
+        foreach ($k in $Map.Keys) { $out += @{ $k = $Map[$k] } }
+    }
+
+    $out
+}
 
 function Normalize-WebURL {
     param(
