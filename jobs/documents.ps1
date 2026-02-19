@@ -5,8 +5,7 @@ $URLReplacement = [Collections.Generic.Dictionary[string,string]]::new([StringCo
 if (-not $pattern) { $pattern = '(?is)(<!doctype\s+html|<html\b|<meta[^>]+charset\s*=\s*["'']?utf-?8|content=["''][^"'']*text/html)' }
 
 if ($CleanupDupes -and $CleanupDupes -eq $true){Clear-DupeDocuments -huduarticles $(get-huduarticles) -huduuploads $(get-huduuploads)}
-# $DeleteDocsMode = $DeleteDocsMode ?? $false
-$DeleteDocsMode = $false
+$DeleteDocsMode = $DeleteDocsMode ?? $false
 
 function Replace-GlobalImages {
     [CmdletBinding()]

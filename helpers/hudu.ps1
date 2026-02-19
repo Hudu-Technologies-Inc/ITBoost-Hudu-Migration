@@ -6,39 +6,26 @@ function Clear-DupeDocuments {
         Where-Object Count -gt 1 |
         ForEach-Object {
         $_.Group |
-            Sort-Object `
-            @{Expression={ $d=$_.updated_at ?? $_.created_at; try{[datetime]$d}catch{Get-Date '1900-01-01'} }; Descending=$true}, `
-            @{Expression='id'; Descending=$true} |
-            Select-Object -Skip 1
+            Sort-Object @{Expression={ 
+                $d=$_.updated_at ?? $_.created_at; try{[datetime]$d}catch{Get-Date '1900-01-01'} }; Descending=$true
+            }, @{
+                Expression='id'; Descending=$true
+            } | Select-Object -Skip 1
         } |
         Where-Object { $_.archived -ne $true } |
         ForEach-Object { Remove-HuduArticle -Id $_.id -Confirm:$false }
 
-        
     $huduUploads |
         Group-Object {
-            $cid = $_.company_id
+            $uid = $_.uploadable_id
+            $utype = $_.uploadable_type
             $nm  = (([string]$_.name).Trim() -replace '\s+',' ').ToLower()
-            if ($cid) { "{0}|{1}" -f $cid,$nm } else { $nm }
-        } |
-        Where-Object Count -gt 1 |
-        ForEach-Object {
-        $_.Group |
-            Sort-Object `
-            @{Expression={ $d=$_.created_at ?? $_.created_date; try{[datetime]$d}catch{Get-Date '1900-01-01'} }; Descending=$true}, `
-            @{Expression='id'; Descending=$true} |
-            Select-Object -Skip 1
-        } |
-        Where-Object { $null -eq $_.archived_at } |
-        ForEach-Object {
-        if (Get-Command Remove-HuduUpload -ErrorAction SilentlyContinue) {
-            Remove-HuduUpload -Id $_.id -Confirm:$false
-        } else {
-            Invoke-HuduRequest -Method delete -Resource "/api/v1/uploads/$($_.id)"
-        }
-        }
-
-
+            { "{0}|{1}|{2}" -f $uid,$utype,$nm }
+        }  | Where-Object Count -gt 1 | ForEach-Object {
+            $_.Group |  Sort-Object @{Expression={
+                $d=$_.created_at ?? $_.created_date; try{[datetime]$d}catch{Get-Date '1900-01-01'} }; Descending=$true
+            }, @{Expression='id'; Descending=$true} | Select-Object -Skip 1
+         } | ForEach-Object { Invoke-HuduRequest -Method delete -Resource "/api/v1/uploads/$($_.id)" }
 }
 
 function New-HuduAddress {

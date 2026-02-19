@@ -4,7 +4,6 @@ $LocationsMap = @{
 fax = "Special Information"
 notes = "Notes"
 phone = "Front Desk Phone Number"
-id = "ITBID"
 }
 #  label Location - type AddressData
 #  label Primary POC - type AssetTag

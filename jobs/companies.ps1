@@ -3,6 +3,9 @@ if ($ITBoostData.ContainsKey("organizations")){
     if (-not $ITBoostData.organizations.ContainsKey('matches')) { $ITBoostData.organizations['matches'] = @() }
 
     foreach ($row in $ITBoostData.organizations.CSVData){
+        if ($row.organization_status -ieq "Inactive") {
+            if ($true -eq $SkipInactive){continue}
+        }        
         $matchedCompany=$null
         $matchedCompany = Get-HuduCompanyFromName -CompanyName $row.name -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null) -deepCompanySearch $true
         $matchedCompany = $matchedCompany.company ?? $matchedCompany
@@ -14,17 +17,8 @@ if ($ITBoostData.ContainsKey("organizations")){
                 ITBID=$row.id
                 HuduID=$matchedCompany.id
             }
-            if ($row.organization_status -ieq "Inactive") {
-                if ($true -eq $SkipInactive){continue}
-
-                # Write-Host "Setting company $($matchedCompany.name) to Inactive"
-                # Set-HuduCompanyArchive -id $matchedCompany.id -Archive $true -Confirm:$false
-            } 
             continue
         } else {
-            if ($row.organization_status -ieq "Inactive") {
-                if ($true -eq $SkipInactive){continue}
-            }
             $newCompanyRequest = @{
                 Name=$row.name
             }
