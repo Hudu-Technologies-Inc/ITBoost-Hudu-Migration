@@ -227,7 +227,6 @@ foreach ($company in $groupedContacts.Keys) {
         }
     }
 }
-else {write-host "no contacts in CSV! skipping."} 
 
 # foreach ($dupecontact in $(Get-HuduAssets -AssetLayoutId $contactsLayout.id | Group-Object { '{0}|{1}' -f $_.company_id, (($_.'name' -as [string]).Trim() -replace '\s+',' ').ToLower() } | Where-Object Count -gt 1 | ForEach-Object { $_.Group | Sort-Object id | Select-Object -Skip 1 } )){
 #     if ($dupecontact.archived -eq $true){continue}

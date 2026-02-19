@@ -44,11 +44,11 @@ $ITBoostData=@{
 foreach ($job in @(
 "read-csvs",
 "get-hududata",
-"companies",
-"locations",
-"contacts"
+"runbooks",
+"standalone-notes",
+"gallery",
+"passwords"
 )){
-# foreach ($job in @("get-hududata","read-csvs")){
     $ITBoostData.JobState = @{Status="$job"; StartedAt=$(Get-Date); FinishedAt=$null}
     write-host "Starting $($ITBoostdata.JobState.Status) at $($ITBoostdata.JobState.StartedAt)"
     . ".\jobs\$job.ps1"

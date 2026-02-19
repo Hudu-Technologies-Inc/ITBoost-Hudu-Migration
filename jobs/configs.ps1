@@ -63,7 +63,7 @@ if ($ITBoostData.ContainsKey("configurations")){
     if (-not $ITBoostData.configurations.ContainsKey('matches')) { $ITBoostData.configurations['matches'] = @() }
     $huduCompanies = $huduCompanies ?? $(get-huducompanies)
 
-    $configsLayout = get-huduassetlayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "config" -haystack $_.name) -or $($_.name -ilike "config*")) } | Select-Object -First 1; $configsLayout = $configsLayout.asset_layout ?? $configsLayout;
+    $configsLayout = get-huduassetlayouts | Where-Object { $_.name -ieq "configs" } | Select-Object -First 1; $configsLayout = $configsLayout.asset_layout ?? $configsLayout;
     write-host "Configs layout id $($configsLayout.id)"
     if (-not $configsLayout){
         $configsLayout=$(New-HuduAssetLayout -name "configs" -Fields @(
