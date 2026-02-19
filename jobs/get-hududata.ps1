@@ -8,6 +8,7 @@ $allHuduLocations=@()
 $allHuduContacts=@()
 Write-Host "Fetching Hudu Passwords fron $(Get-HuduBaseURL)"
 $allHuduPasswords=Get-HuduPasswords
+$LocationLayout = $locationlayout ?? $(Get-HuduAssetLayouts | Where-Object { $_.name -ieq "location" -or $_.name -ieq "locations" } | Select-Object -First 1); $LocationLayout = $LocationLayout.asset_layout ?? $LocationLayout;
 
 if ($null -eq $internalCompanyId){
     $internalCompanyName = $internalCompanyName ?? "Your internal Company"

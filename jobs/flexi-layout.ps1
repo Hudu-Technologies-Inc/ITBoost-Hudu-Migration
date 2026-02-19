@@ -52,7 +52,7 @@ if ($smooshLabels -and $smooshLabels.count -gt 0){
 
 # load companies index if available
 $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
-$LocationLayout = Get-HuduAssetLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "location" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "locations" -Haystack $_.name)) } | Select-Object -First 1
+$LocationLayout = $locationlayout ?? $(Get-HuduAssetLayouts | Where-Object { $_.name -ieq "location" -or $_.name -ieq "locations" } | Select-Object -First 1); $LocationLayout = $LocationLayout.asset_layout ?? $LocationLayout;
 
 if (-not $ITBoostData.ContainsKey("$sourceProperty")){write-host "No data for $sourceproperty"; exit 1}
 if ($usingExistingLayout -and $existingLayout) {
@@ -81,6 +81,7 @@ if (-not $flexisLayout){
 }
 $flexisFields = $flexisLayout.fields
 $dateFields = $flexisFields | Where-Object { $_.field_type -eq "Date" } | Select-Object -ExpandProperty label
+$dateFieldsLower = $dateFields | % { $_.ToLowerInvariant() }
 $NumberFields = $flexisFields | Where-Object { $_.field_type -eq "Number" } | Select-Object -ExpandProperty label
 $WebsiteFields = $flexisFields | Where-Object { $_.field_type -eq "Website" } | Select-Object -ExpandProperty label
 $ListFields = $flexisFields | Where-Object { $_.field_type -eq "ListSelect" }
@@ -110,11 +111,11 @@ foreach ($company in $groupedflexis.Keys) {
     write-host "starting $company"
     $RelationsForAsset = @()
     $flexisForCompany = $groupedflexis[$company]
-    $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
-    if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { continue }
+    $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null) -deepCompanySearch $true
+    
+    if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { write-host "No matched company"; continue; }
     foreach ($companyflexi in $flexisForCompany){
-        $matchedflexi = Get-HuduAssets -AssetLayoutId $flexisLayout.id -CompanyId $matchedCompany.id -Name $($companyflexi.$nameField ?? $companyFlexi.name) |
-                            Select-Object -First 1
+        $matchedflexi = Get-HuduAssets -AssetLayoutId $flexisLayout.id -CompanyId $matchedCompany.id -Name $($companyflexi.$nameField ?? $companyFlexi.name) | Select-Object -First 1
     
         $GivenName = $null
         $AltLabel = $nameField -replace "_"," "                
@@ -137,6 +138,7 @@ foreach ($company in $groupedflexis.Keys) {
                         HuduCompanyId    = $matchedflexi.company_id
                         PasswordsToCreate= ($companyflexi.password ?? @())
                     }
+                    write-host "matched existing $sourceProperty for $GivenName, skipping creation and moving to next item..." -ForegroundColor Green
                     continue
         } 
         $newflexirequest=@{
@@ -194,7 +196,7 @@ foreach ($company in $groupedflexis.Keys) {
                     $setVal = $bestChoice.name
                 }
 
-            } elseif ($dateFields -contains "$huduField".ToLowerInvariant()) {
+            } elseif ($dateFieldsLower -contains $huduField.ToLowerInvariant()) {
                 $setVal = Get-CoercedDate -inputDate $rowVal
             } elseif ($NumberFields -contains "$huduField".ToLowerInvariant()) {
                 $setVal = Get-CastIfNumeric -Value $rowVal
@@ -210,18 +212,25 @@ foreach ($company in $groupedflexis.Keys) {
 
             $fields += @{ $huduField = "$setVal".Trim() }
         }
-
-        if (-not $([string]::IsNullOrWhiteSpace($companyflexi.location))){
+        if ($tagMaps.ContainsKey("location") -and $null -ne $tagMaps["location"]){
+            if (-not $([string]::IsNullOrWhiteSpace($companyflexi.location))){
+                $locationDeserialized = SafeDecode $companyflexi.location
+                $locationDeserialized = $locationDeserialized.value ?? $locationDeserialized.text ?? $locationDeserialized.location ?? $locationDeserialized
+                if (-not $([string]::IsNullOrWhiteSpace($locationDeserialized))){
+                $matchedlocation = Get-HuduAssets -AssetLayoutId ($LocationLayout.id ?? 2) -CompanyId $matchedCompany.id |
+                                    Where-Object { test-equiv -A $_.name -B $locationDeserialized } |
+                                    Select-Object -First 1
+                                    if ($matchedlocation){
+                    $fields+=@{"Location" = "[$($matchedlocation.id)]"}
+                    }
+                }
+            } else {
+                write-host "no location field to map for $GivenName, skipping location mapping"
+            }
+        } elseif ($flexisMap.ContainsKey("location")){
             $locationDeserialized = SafeDecode $companyflexi.location
             $locationDeserialized = $locationDeserialized.value ?? $locationDeserialized.text ?? $locationDeserialized.location ?? $locationDeserialized
-            if (-not $([string]::IsNullOrWhiteSpace($locationDeserialized))){
-            $matchedlocation = Get-HuduAssets -AssetLayoutId ($LocationLayout.id ?? 2) -CompanyId $matchedCompany.id |
-                                Where-Object { test-equiv -A $_.name -B $locationDeserialized } |
-                                Select-Object -First 1
-                                if ($matchedlocation){
-                $fields+=@{"Location" = "[$($matchedlocation.id)]"}
-                }
-            }
+            $fields+=@{"Location" = "[$($locationDeserialized)]"}
         }
         $SmooshedNotes = @()
     foreach ($smooshLabel in $smooshLabels){
@@ -229,7 +238,7 @@ foreach ($company in $groupedflexis.Keys) {
         $rowVal = Get-ValueFromCSVKeyVariants -Row $companyflexi -Label $smooshLabel
         $rowVal = [string]$rowVal
         if ([string]::IsNullOrWhiteSpace($rowVal)) { continue }
-        if ($key -eq "ITBNotes"){
+        if ($smooshLabel -eq "ITBNotes"){
             $rowval= $(try {$(safedecode $($(SafeDecode $rowval) -as [string])) -replace "; ","`n"} catch {continue})
 
         }
@@ -345,7 +354,8 @@ foreach ($company in $groupedflexis.Keys) {
         }
 
 
-    }
+    } else {
+        write-host "Failed to create $FlexiLayoutName from $sourceProperty for $GivenName, skipping and moving to next item..." -ForegroundColor Red}
     }
 }
 

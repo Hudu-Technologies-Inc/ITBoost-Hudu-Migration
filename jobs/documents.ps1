@@ -7,6 +7,72 @@ if (-not $pattern) { $pattern = '(?is)(<!doctype\s+html|<html\b|<meta[^>]+charse
 if ($CleanupDupes -and $CleanupDupes -eq $true){Clear-DupeDocuments -huduarticles $(get-huduarticles) -huduuploads $(get-huduuploads)}
 $DeleteDocsMode = $DeleteDocsMode ?? $false
 
+function Replace-GlobalImages {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$RawHtml,
+        [Parameter(Mandatory)][int]$ArticleId,
+        [Parameter(Mandatory)][string]$ITBoostExportPath
+    )
+
+    $pattern = @"
+(?<attr>src|href)\s*=\s*(?<q>["'])(?<url>(?:https?:\/\/[^"']+)?(?:\.{1,2}\/)*global\/doc\/images\/(?<name>[^"\/?#]+)(?:\?[^"']*)?)(?<q2>\k<q>)
+"@
+
+    $rx = [regex]::new($pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+
+    $matches = $rx.Matches($RawHtml)
+    if ($matches.Count -eq 0) {
+        Write-Host "Found 0 global images"
+        return [pscustomobject]@{ Html = $RawHtml; Replacements = @{}; Missing = @() }
+    }
+
+    $imageNames = $matches | ForEach-Object { $_.Groups['name'].Value } | Sort-Object -Unique
+    Write-Host "Found $($imageNames.Count) global images: $($imageNames -join ', ')"
+
+    $byName = @{}
+    Get-ChildItem -Path $ITBoostExportPath -File -Recurse -ErrorAction Stop | ForEach-Object {
+        if (-not $byName.ContainsKey($_.Name)) { $byName[$_.Name] = $_.FullName }
+    }
+
+    $newUrlByName = @{}
+    foreach ($name in $imageNames) {
+        $srcPath = $byName[$name]
+        if (-not $srcPath -or -not (Test-Path -LiteralPath $srcPath)) {
+            Write-Warning "Missing global image file for: $name"
+            continue
+        }
+
+        $imgUp = New-HuduUpload -FilePath $srcPath -Uploadable_Id $ArticleId -Uploadable_Type 'Article'
+        $imgUp = $imgUp.upload ?? $imgUp
+
+        $repUrl = $imgUp.public_photo_url ?? $imgUp.publicPhotoUrl ?? $imgUp.url
+        if (-not $repUrl) {
+            Write-Warning "Upload returned no URL for: $name"
+            continue
+        }
+
+        $newUrlByName[$name] = $repUrl
+        Write-Host "Uploaded $name -> $repUrl"
+    }
+
+    $updatedHtml = $rx.Replace($RawHtml, {
+        param($m)
+        $attr = $m.Groups['attr'].Value
+        $q    = $m.Groups['q'].Value
+        $name = $m.Groups['name'].Value
+
+        if ($newUrlByName.ContainsKey($name)) {
+            return "$attr=$q$($newUrlByName[$name])$q"
+        }
+        return $m.Value
+    })
+
+    [pscustomobject]@{
+        Html         = $updatedHtml
+        Replacements = $newUrlByName
+    }
+}
 function Add-Replacement {
   param([string]$Key, [string]$Value)
   if ([string]::IsNullOrWhiteSpace($Key) -or [string]::IsNullOrWhiteSpace($Value)) { return }
@@ -48,20 +114,28 @@ if (-not $ITBoostData.documents.ContainsKey('matches')) { $ITBoostData.documents
 
 
 foreach ($company in $groupeddocuments.Keys) {
+    if ([string]::IsNullOrWhiteSpace($company)) { $matchedcompany = $internalcompany } else {$matchedCompany = $null}
     $documentsForCompany = $groupeddocuments[$company]
     write-host "starting $company with $($documentsForCompany.count) docs"
-    $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
+    $matchedCompany = $matchedCompany ?? $(Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null))
 
-    if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { continue }
+    if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { 
+        $matchedCompany = $internalcompany ?? $(Get-HuduCompanies -id $internalCompanyId) ?? $($(Read-Host "No match for company '$company', enter internal company id or press enter to skip") | ForEach-Object { Get-HuduCompany -id $_ })
+     }
+     $matchedCompany = $matchedCompany.company ?? $matchedCompany
+    if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { 
+        continue
+    }
     foreach ($companydocument in $documentsForCompany){
         $matchedDocument = $null
         $matchedDocument = $allHududocuments | Where-Object {
             $_.company_id -eq $matchedCompany.id -and
                     $($(test-equiv -A $_.name -B $companydocument.name) -or 
-                    $([double]$(Get-SimilaritySafe -A $_.name -B $companydocument.name) -ge 0.90))} | Select-Object -first 1
+                    $([double]$(Get-SimilaritySafe -A $_.name -B $companydocument.name) -ge 0.96))} | Select-Object -first 1
+
         $matchedDocument = $matchedDocument ?? $($(Get-HuduArticles -CompanyId $matchedCompany.id -name $companydocument.name) | Select-Object -first 1)
         if ($matcheddocument){
-            Write-Host "matched $($companydocument.name) to doc in Hudu @ $($matchedDocument.url); updating"
+            # Write-Host "matched $($companydocument.name) to doc in Hudu @ $($matchedDocument.url); updating"
                 $ITBoostData.documents['matches'] += @{
                     CompanyName      = $companydocument.organization
                     ITBID            = $companydocument.id
@@ -70,7 +144,7 @@ foreach ($company in $groupeddocuments.Keys) {
                     HuduObject       = $matcheddocument
                     HuduCompanyId    = $matcheddocument.company_id
                 }
-                # continue
+                continue
             if ($DeleteDocsMode -and $true -eq $DeleteDocsMode){
                 if (-not $matchedDocument -or -not $matchedDocument.id -or $matchedDocument.id -lt 1){continue}
                 write-host "Deleting uploads fo $($matcheddocument.id)"
@@ -88,8 +162,7 @@ foreach ($company in $groupeddocuments.Keys) {
             }
 
         }
-        if ($DeleteDocsMode -and $true -eq $DeleteDocsMode){continue}
-
+            if ($DeleteDocsMode -and $true -eq $DeleteDocsMode){continue}
 
             $imagesCreated = @()
             $uploadsAdded  = @()
@@ -250,5 +323,24 @@ foreach ($company in $groupeddocuments.Keys) {
         }
     }
 }
+write-host "Updating global images in matched documents"
+$globalReplacements = @()
+$ITBoostData.documents.Matches.HuduObject | foreach-object {
+    if ($globalreplacements -contains $_.id){write-host "Already processed global images for document ID $($_.id), skipping"; continue}
+    $globalReplacements += $_.id
+    $globalUpdateResult = $null
+    $globalUpdateResult = Replace-GlobalImages -RawHtml $_.content -ArticleId $_.id -ITBoostExportPath $ITBoostExportPath
+    if ($globalUpdateResult.Replacements.Count -gt 0) {
+        Write-Host "Updating document ID $($_.id) with new global image URLs"
+        try {
+            Set-HuduArticle -Id $_.id -Content $globalUpdateResult.Html
+        } catch {
+            Write-Warning "Failed to update document ID $($_.id) with new global image URLs: $_"
+        }
+    } else {
+        Write-Host "No global images to update for document ID $($_.id)"
+    }
+}
 
+$globalReplacements | convertto-json -depth 99 | Out-File -FilePath (Join-Path $debug_folder "globalImageReplacements.log") -Force
 $ITBoostData.documents["matches"] | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "MatchedDocuments.json")) -Force

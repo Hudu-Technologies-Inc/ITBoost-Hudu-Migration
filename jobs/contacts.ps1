@@ -4,12 +4,29 @@ primary_email = "Email Address"
 contact_type="Contact Type"
 primary_phone = "Office Phone number (DID)"
 title = "Title"
+id = "ITBID"
 }
 $smooshToNotesProps = @("notes","resource_type","contact_type","relationship","additional_contact_items")
 $SmooshPropsTo = "Notes"
+# additional_contact_items
+# companyUuid
+# contact_type
+# first_name
+# id
+# last_name
+# location
+# notes
+# organization
+# password
+# primary_email
+# primary_phone
+# relationship
+# resource_id
+# resource_type
+# title
+# types
 
-
-$LocationLayout = $LocationLayout ?? (Get-HuduAssetLayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "location" -haystack $_.name) -or $(Get-NeedlePresentInHaystack -needle "locations" -Haystack $_.name)) } | Select-Object -First 1)
+$LocationLayout = $locationlayout ?? $(Get-HuduAssetLayouts | Where-Object { $_.name -ieq "location" -or $_.name -ieq "locations" } | Select-Object -First 1); $LocationLayout = $LocationLayout.asset_layout ?? $LocationLayout;
 
 function Build-HuduContactIndex {
   [CmdletBinding()]
@@ -61,7 +78,7 @@ function Build-HuduContactIndex {
 $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
 if (-not $ITBoostData.contacts.ContainsKey('matches')) { $ITBoostData.contacts['matches'] = @() }
 
-$contactsLayout = $(get-huduassetlayouts) | Where-Object { $_.name -ilike "*people*" -or $_.name -ilike "*contacts*" } | Select-Object -First 1
+$contactsLayout = $(get-huduassetlayouts) | Where-Object { $_.name -ieq "people" -or $_.name -ieq "contacts" } | Select-Object -First 1
 if (-not $contactsLayout){
     $StatusList = Get-HuduLists | Where-Object {$_.name -ieq "People Status" -or $_.name -ieq "Contact Status"} | Select-Object -First 1
     $statusList = $StatusList ?? $(new-hudulist -name "People Status" -items @("ACTIVE", "INACTIVE (DO NOT SERVICE)", "Leave", "Terminated", "Onboarding"))
@@ -90,7 +107,8 @@ if (-not $contactsLayout){
     @{label="Workstation used";   show_in_list=$false;   field_type="Text";required=$false;   hint="What workstation is used?";   position=11},
     @{label="Notes";   show_in_list=$false;   field_type="RichText";required=$false;   hint="";   position=12},
     @{label="IP Address of Primary Computer";   show_in_list=$false;   field_type="Website";required=$false;   hint="";   linkable_id=5;   position=13},
-    @{label="Location";   show_in_list=$true;   field_type="AssetTag";required=$false;   hint="";   linkable_id=$LocationLayout.id;   multiple_options=$false; position=14}
+    @{label="Location";   show_in_list=$true;   field_type="AssetTag";required=$false;   hint="";   linkable_id=$LocationLayout.id;   multiple_options=$false; position=14},
+    @{label="ITBID";   show_in_list=$false;   field_type="text";required=$false;   hint="ID from ITBoost";  multiple_options=$false; position=17}
     ) -Icon "fas fa-users" -IconColor "#ffffff" -Color "#6136ff" -IncludePasswords $true -IncludePhotos $true -IncludeComments $true -IncludeFiles $true).asset_layout
     $contactsLayout = $contactsLayout.asset_layout ?? $contactsLayout
     $null = Set-HuduAssetLayout -id $contactsLayout.id -Active $true
@@ -123,10 +141,8 @@ foreach ($company in $groupedContacts.Keys) {
         $matchedContact = $matchedcontact ??  $(Get-HuduAssets -AssetLayoutId $contactsLayout.id -CompanyId $matchedCompany.id -Name $humanName | Select-Object -First 1)
         $matchedcontact = $matchedContact.asset ?? $matchedContact
 
-        if ($null -ne $matchedcontact){
+        if ($null -ne $matchedcontact -and $false -eq $mergeOnMatch){
             Write-Host "Matched $humanName to $($matchedcontact.name) for $($matchedCompany.name)"
-
-            # ensure the array exists once
             $ITBoostData.contacts['matches'] += @{
                 CompanyName      = $companyContact.organization
                 ITBID            = $companyContact.id
@@ -158,9 +174,7 @@ foreach ($company in $groupedContacts.Keys) {
             if (-not $([string]::IsNullOrWhiteSpace($companyContact.location))){
                 $matchedLocation = $null
                 $matchedLocation = $allHuduLocations | Where-Object { $_.company_id -eq $matchedCompany.id -and $(test-equiv -A ($_.name -as [string]) -B $companyContact.location) } | Select-Object -First 1    
-                # $matchedlocation = Get-HuduAssets -AssetLayoutId ($LocationLayout.id ?? 2) -CompanyId $matchedCompany.id |
-                #                     Where-Object { test-equiv -A $_.name -B $companyContact.location } |
-                #                     Select-Object -First 1
+
                 if ($matchedlocation){
                     $fields+=@{"Location" = "[$($matchedlocation.id)]"}
                 }
@@ -177,15 +191,26 @@ foreach ($company in $groupedContacts.Keys) {
                 $fields+=@{"$SmooshPropsTo" ="$notes`n$contactNotes"}
             }
         }
+        if ($null -ne $matchedcontact -and $matchedcontact.id -gt 0 -and $true -eq $mergeOnMatch){
+            write-host "merging on match..."
+            $merged = Merge-Matches -originalAsset $matchedcontact -newFields $fields -destassetlayout $contactsLayout -preferOriginal ($preferOriginal ?? $true)
+            $newcontactrequest["Fields"]=$merged.Fields
+            $newcontactrequest["id"]=$matchedcontact.id
+        }
+                    
         # add all fields
         $newcontactrequest['Fields'] = $fields
         try {
             $newContact = $null
-            $newContact = New-Huduasset @newcontactrequest
+            if ($null -ne $newcontactrequest.id){
+                $newContact = Set-Huduasset @newcontactrequest
+            } else {
+                $newContact = New-Huduasset @newcontactrequest
+            }
             $newContact = $newContact.asset ?? $newContact
             write-host "Created new contact $($newContact.name) with ID $($newContact.id) for company $($matchedCompany.name)"
         } catch {
-            write-host "Error creating location: $_"
+            write-host "Error $(if ($null -ne $matchedcontact) { "merging on match" } else { "creating new" }) contact: $_"
         }
         
         if ($null -ne $newContact){
@@ -202,7 +227,6 @@ foreach ($company in $groupedContacts.Keys) {
         }
     }
 }
-else {write-host "no contacts in CSV! skipping."} 
 
 # foreach ($dupecontact in $(Get-HuduAssets -AssetLayoutId $contactsLayout.id | Group-Object { '{0}|{1}' -f $_.company_id, (($_.'name' -as [string]).Trim() -replace '\s+',' ').ToLower() } | Where-Object Count -gt 1 | ForEach-Object { $_.Group | Sort-Object id | Select-Object -Skip 1 } )){
 #     if ($dupecontact.archived -eq $true){continue}

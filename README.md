@@ -4,7 +4,7 @@ Easy Migration from ITBoost to Hudu
 
 ### Prerequisites
 
-- Hudu Instance of 2.38.0 or newer
+- Hudu Instance of 2.39.6 or newer
 - Hudu API Key
 - ITBoost Export
 - Powershell 7.5.1 or later on Windows PC
@@ -30,11 +30,16 @@ Other than that, it's best to start fresh. You can custom-map fields in the same
 
 Make your own copy of the environ.example template (as .ps1 file) and record the following items:
 
-- `$hudubaseurl` (eg. ***https://myinstance.huducloud.com***),
-- `$huduapikey` (preferably with full-access)
-- `$ITBoostExportPath`, your absolute/full path to your ITBoost Export
+- `hudubaseurl` (eg. ***https://myinstance.huducloud.com***),
+- `huduapikey` (preferably with full-access)
+- `ITBoostExportPath`, your absolute/full path to your ITBoost Export
 - `TMPbasedir`, your designated temp directory for document, article, image processing
 - `internalCompanyName`, your company name, whether existing, or to-be-created
+
+Optional (advanced) items:
+- `mergeOnMatch`, (default `$false`)- if your instance has existing and valid data, setting this to `$true` will merge the fields and properties for matching source + destination objects
+- `preferoriginal`, (default: `$false`)- only applicable if you've set 'merge on match' to `$true`. if set to true, when we encounter fields/properties that are present in both source and destination objects, we prefer the value of the existing item in Hudu. If set to false, we give preference to the incoming data from ITBoost.
+
 
 >Here's a snippet to move you in the right direction (make sure you're in project folder first)
 >```
@@ -85,6 +90,7 @@ standalone-notes
 gallery
 passwords
 wrap-up
+relate-all [process+relate attachments]
 
 A few of these touch on multiple different .csv files. For example, the websites job will use both the 
 `domains.csv` file and the `ssl-certificates` file when/if present. Core jobs are safe to run twice without creating duplicates
@@ -110,6 +116,16 @@ the Config-Expansion job can take a while, but it basically does this:
 - Combs through all CSV rows for each asset to paint the most complete picture, since configurations can have multiple CSV rows for a given asset
 - Creates Networks/Subnets/IP Addresses in Hudu and attaches these to the assets that have valid Addresses/Networks
 - Creates a nice little table about observed IP addresses between the CSV rows, which network it belongs to, with links
+
+### Other / Post-Jobs
+
+If you want your configurations to be split into asset layouts by configuration type, you can launch the 'split-configs.ps1' job from your current pwsh7 migration session (so long as you invoked with dotsourcing, this is something you can always do)
+
+For some organization strategies, it can break things up too much, but for others, it could offer some differentiation between what is often the largest layout after ITB-migration.
+
+```
+. .\jobs\split-configs.ps1
+```
 
 ### Flexi / Custom Asset Layouts
 
@@ -149,7 +165,11 @@ It will surely get easier in the future with some automatic parsing stuff, but f
 
 ## Outputs and Logging
 
-Entities that are created and/or matched will have a JSON file dumped out in your debug folder, which will be in the project directory. These files can be huge, but are best to be saved, since they can prove useful in case something goes south
+Entities that are created and/or matched will have a JSON file dumped out in your debug folder, which will be in the project directory. These files can be huge, but are best to be saved, since they can prove useful in case something goes south.
+
+Your logged files will vary in name based on which layouts you have in ITBoost and which ones have already been processed. They won't be unlike the picture, below, however.
+
+<img width="531" height="420" alt="image" src="https://github.com/user-attachments/assets/bb6ec397-993e-4d4c-920d-976637d4dae6" />
 
 ## Community & Socials
 
