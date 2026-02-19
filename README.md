@@ -30,11 +30,16 @@ Other than that, it's best to start fresh. You can custom-map fields in the same
 
 Make your own copy of the environ.example template (as .ps1 file) and record the following items:
 
-- `$hudubaseurl` (eg. ***https://myinstance.huducloud.com***),
-- `$huduapikey` (preferably with full-access)
-- `$ITBoostExportPath`, your absolute/full path to your ITBoost Export
+- `hudubaseurl` (eg. ***https://myinstance.huducloud.com***),
+- `huduapikey` (preferably with full-access)
+- `ITBoostExportPath`, your absolute/full path to your ITBoost Export
 - `TMPbasedir`, your designated temp directory for document, article, image processing
 - `internalCompanyName`, your company name, whether existing, or to-be-created
+
+Optional (advanced) items:
+- `mergeOnMatch`, (default `$false`)- if your instance has existing and valid data, setting this to `$true` will merge the fields and properties for matching source + destination objects
+- `preferoriginal`, (default: `$false`)- only applicable if you've set 'merge on match' to `$true`. if set to true, when we encounter fields/properties that are present in both source and destination objects, we prefer the value of the existing item in Hudu. If set to false, we give preference to the incoming data from ITBoost.
+
 
 >Here's a snippet to move you in the right direction (make sure you're in project folder first)
 >```
@@ -85,6 +90,7 @@ standalone-notes
 gallery
 passwords
 wrap-up
+relate-all [process+relate attachments]
 
 A few of these touch on multiple different .csv files. For example, the websites job will use both the 
 `domains.csv` file and the `ssl-certificates` file when/if present. Core jobs are safe to run twice without creating duplicates
@@ -149,7 +155,7 @@ It will surely get easier in the future with some automatic parsing stuff, but f
 
 ## Outputs and Logging
 
-Entities that are created and/or matched will have a JSON file dumped out in your debug folder, which will be in the project directory. These files can be huge, but are best to be saved, since they can prove useful in case something goes south
+Entities that are created and/or matched will have a JSON file dumped out in your debug folder, which will be in the project directory. These files can be huge, but are best to be saved, since they can prove useful in case something goes south.
 
 ## Community & Socials
 

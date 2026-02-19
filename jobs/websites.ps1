@@ -18,7 +18,7 @@ if ($ITBoostData.ContainsKey("domains")){
             continue
         }
 
-        $notes = Get-NotesFromArray -notesInput $($row.notes ?? @())
+        $notes = $(SafeDecode $_.notes).description
         $MatchedWebsite=$null
         $MatchedWebsite=$null
         $MatchedWebsite = $allHuduWebsites | Where-Object {
