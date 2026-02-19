@@ -117,6 +117,16 @@ the Config-Expansion job can take a while, but it basically does this:
 - Creates Networks/Subnets/IP Addresses in Hudu and attaches these to the assets that have valid Addresses/Networks
 - Creates a nice little table about observed IP addresses between the CSV rows, which network it belongs to, with links
 
+### Other / Post-Jobs
+
+If you want your configurations to be split into asset layouts by configuration type, you can launch the 'split-configs.ps1' job from your current pwsh7 migration session (so long as you invoked with dotsourcing, this is something you can always do)
+
+For some organization strategies, it can break things up too much, but for others, it could offer some differentiation between what is often the largest layout after ITB-migration.
+
+```
+. .\jobs\split-configs.ps1
+```
+
 ### Flexi / Custom Asset Layouts
 
 Custom asset layouts job is intended to be ran for core-entities. That is to say, assets that aren't locations, contacts, companies, websites, configurations, documents, passwords, locations, or runbooks. All the previous items are automagic, but custom flexible layouts (for now) require a touch of elbow-grease. Not to worry, if you goof something, you can simply remove the asset layout in Hudu and try again by re-invoking the flexi-layout job. It's pretty forgiving
