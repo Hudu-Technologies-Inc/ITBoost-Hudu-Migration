@@ -157,6 +157,10 @@ It will surely get easier in the future with some automatic parsing stuff, but f
 
 Entities that are created and/or matched will have a JSON file dumped out in your debug folder, which will be in the project directory. These files can be huge, but are best to be saved, since they can prove useful in case something goes south.
 
+Your logged files will vary in name based on which layouts you have in ITBoost and which ones have already been processed. They won't be unlike the picture, below, however.
+
+<img width="531" height="420" alt="image" src="https://github.com/user-attachments/assets/bb6ec397-993e-4d4c-920d-976637d4dae6" />
+
 ## Community & Socials
 
 [![Hudu Community](https://img.shields.io/badge/Community-Forum-blue?logo=discourse)](https://community.hudu.com/)
