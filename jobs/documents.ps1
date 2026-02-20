@@ -114,10 +114,13 @@ if (-not $ITBoostData.documents.ContainsKey('matches')) { $ITBoostData.documents
 
 
 foreach ($company in $groupeddocuments.Keys) {
-    if ([string]::IsNullOrWhiteSpace($company)) { $matchedcompany = $internalcompany } else {$matchedCompany = $null}
     $documentsForCompany = $groupeddocuments[$company]
     write-host "starting $company with $($documentsForCompany.count) docs"
-    $matchedCompany = $matchedCompany ?? $(Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null))
+    if ([string]::IsNullOrWhiteSpace($company)) { $matchedcompany = $internalcompany } else {
+        $matchedCompany = $null
+        $matchedCompany = $(Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies -deepCompanySearch $true -existingIndex $($ITBoostData.organizations["matches"] ?? $null))
+    }
+
 
     if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { 
         $matchedCompany = $internalcompany ?? $(Get-HuduCompanies -id $internalCompanyId) ?? $($(Read-Host "No match for company '$company', enter internal company id or press enter to skip") | ForEach-Object { Get-HuduCompany -id $_ })
@@ -129,9 +132,7 @@ foreach ($company in $groupeddocuments.Keys) {
     foreach ($companydocument in $documentsForCompany){
         $matchedDocument = $null
         $matchedDocument = $allHududocuments | Where-Object {
-            $_.company_id -eq $matchedCompany.id -and
-                    $($(test-equiv -A $_.name -B $companydocument.name) -or 
-                    $([double]$(Get-SimilaritySafe -A $_.name -B $companydocument.name) -ge 0.96))} | Select-Object -first 1
+            $_.company_id -eq $matchedCompany.id -and $(test-equiv -A $_.name -B $companydocument.name)} | Select-Object -first 1
 
         $matchedDocument = $matchedDocument ?? $($(Get-HuduArticles -CompanyId $matchedCompany.id -name $companydocument.name) | Select-Object -first 1)
         if ($matcheddocument){
@@ -327,7 +328,6 @@ write-host "Updating global images in matched documents"
 $globalReplacements = @()
 $ITBoostData.documents.Matches.HuduObject | foreach-object {
     if ($globalreplacements -contains $_.id){write-host "Already processed global images for document ID $($_.id), skipping"; continue}
-    $globalReplacements += $_.id
     $globalUpdateResult = $null
     $globalUpdateResult = Replace-GlobalImages -RawHtml $_.content -ArticleId $_.id -ITBoostExportPath $ITBoostExportPath
     if ($globalUpdateResult.Replacements.Count -gt 0) {

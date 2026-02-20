@@ -7,7 +7,7 @@ if ($ITBoostData.ContainsKey("organizations")){
             if ($true -eq $SkipInactive){continue}
         }        
         $matchedCompany=$null
-        $matchedCompany = Get-HuduCompanyFromName -CompanyName $row.name -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null) -deepCompanySearch $true
+        $matchedCompany = Get-HuduCompanyFromName -CompanyName $row.name  -deepCompanySearch $true -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null) 
         $matchedCompany = $matchedCompany.company ?? $matchedCompany
         if ($matchedCompany){
             Write-Host "Matched company $($matchedCompany.name) to $($row.name)"

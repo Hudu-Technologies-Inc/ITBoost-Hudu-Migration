@@ -213,6 +213,16 @@ function Refresh-ListCache {
     }
     return $listNameExistsByListId
 }
+
+function normalize-companyName {
+    param([string]$Text)
+
+    ($Text `
+        -replace '(?i)\binc\b', '' `
+        -replace '[\.,]', '' `
+        -replace '\s+', ' '
+    ).Trim()
+}
 function Get-HuduCompanyFromName {
     # use index first. Then existing list. Then API call.
     param (
@@ -225,11 +235,17 @@ function Get-HuduCompanyFromName {
     )
     if ([string]::IsNullOrWhiteSpace($CompanyName)) { return $null }
 
+        $normalizedCompanyName = normalize-companyName -Text $CompanyName
     # matched first
     $matchedCompany = $null
-    if ($existingIndex -ne $null -and $existingIndex.count -gt 0){
+    if ($deepCompanySearch -eq $true){
+        $matchedCompany = get-huducompanies | Where-Object {$(normalize-companyName -Text $_.name) -ieq (normalize-companyName -Text $normalizedCompanyName)} | Select-Object -First 1
+    }
+    if ($existingIndex -ne $null -and $existingIndex.count -gt 0 -and $matchedCompany -eq $null){
         $matchedCompany = $matchedCompany ?? $existingIndex | where-object {
             ($_.CompanyName -ieq $CompanyName) -or ($_.HuduCompany.name -ieq $CompanyName) -or
+            ($normalizedCompanyName -ieq (normalize-companyName -Text $_.CompanyName)) -or ($normalizedCompanyName -ieq (normalize-companyName -Text $_.HuduCompany.name)) -or
+            ($normalizedCompanyName -icontains (normalize-companyName -Text $_.CompanyName)) -or ($normalizedCompanyName -icontains (normalize-companyName -Text $_.HuduCompany.name)) -or
             [bool]$(test-equiv -A $_.CompanyName -B $CompanyName) } | Select-Object -First 1
         if ($includenicknames){
             $matchedCompany = $matchedCompany ?? $existingIndex | where-object {
@@ -237,7 +253,7 @@ function Get-HuduCompanyFromName {
                     ($_.HuduCompany.nickname -ieq $CompanyName) -or
                     [bool]$(test-equiv -A $_.HuduObject.nickname -B $CompanyName))
             } | Select-Object -First 1
-        }
+        }   
     }
     if ($null -ne $matchedCompany){
       $matchedCompany = $matchedCompany.HuduCompany ?? $matchedCompany
@@ -271,7 +287,9 @@ function Get-HuduCompanyFromName {
     if ($null -eq $matchedCompany){
           $matchedCompany = $matchedCompany ?? $(Get-HuduCompanies) | where-object {
             ($_.name -ieq $CompanyName) -or
-            [bool]$(test-equiv -A $_.name -B $CompanyName)`
+            [bool]$(test-equiv -A $_.name -B $CompanyName) -or 
+            ($normalizedCompanyName -ieq (normalize-companyName -Text $_.name))  -or
+            ($normalizedCompanyName -icontains (normalize-companyName -Text $_.name)) 
         } | Select-Object -First 1
     }
     if ($null -ne $matchedCompany){
