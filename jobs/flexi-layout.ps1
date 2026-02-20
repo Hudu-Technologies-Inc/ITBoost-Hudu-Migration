@@ -111,7 +111,7 @@ foreach ($company in $groupedflexis.Keys) {
     write-host "starting $company"
     $RelationsForAsset = @()
     $flexisForCompany = $groupedflexis[$company]
-    $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null) -deepCompanySearch $true
+    $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -deepCompanySearch $true -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null) 
     
     if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { write-host "No matched company"; continue; }
     foreach ($companyflexi in $flexisForCompany){
