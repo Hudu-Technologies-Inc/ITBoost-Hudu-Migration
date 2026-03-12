@@ -1,9 +1,9 @@
 $PassProps = @{
-  resource_type = "PasswordType"   # verify this param name exists; many modules use PasswordTypeId or similar
+  resource_type = "PasswordType"
   username      = "Username"
   password      = "Password"
-  notes         = "Description"    # confirm the param is Description (not Notes)
-  server        = "Url"            # many cmdlets use Url, not URL
+  notes         = "Description"
+  server        = "Url"
 }
 
 # load companies index if available
@@ -17,10 +17,13 @@ if ($ITBoostData.ContainsKey("passwords")) {
 
   foreach ($company in $passwords.Keys) {
     Write-Host "starting $company"
-    $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
+    $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -deepCompanySearch $true -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
     Write-Host "Matched to company $($matchedCompany.name)"
     if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { 
-        continue
+        $matchedCompany = New-HuduCompany -name $company
+        $matchedCompany = get-huducompanies -Name $company | select-object -first 1
+        $matchedCompany = $matchedCompany.company ?? $matchedCompany
+        Write-Host "Created and matched to company $($matchedCompany.name) with ID $($matchedCompany.id)"
      }
 
     $companyPasswords = Get-HuduPasswords -CompanyId $matchedCompany.id
@@ -51,9 +54,8 @@ if ($ITBoostData.ContainsKey("passwords")) {
         continue
       }
 
-      if     ($matchedAsset)   { $asset = $matchedAsset.asset ?? $matchedAsset; $NewPasswordRequest.passwordable_id = $asset.id;          $NewPasswordRequest.passwordable_type = "Asset"   }
-      elseif ($matchedWebsite) { $NewPasswordRequest.passwordable_id = $($matchedWebsite.website.id ?? $matchedWebsite.id);                                               $NewPasswordRequest.passwordable_type = "Website" }
-      else                     { $NewPasswordRequest.passwordable_id = $null;                                               $NewPasswordRequest.passwordable_type = $null }
+      if     ($matchedAsset -and $matchedAsset.id -gt 0)   { $asset = $matchedAsset.asset ?? $matchedAsset; $NewPasswordRequest.passwordable_id = $matchedAsset.id; $NewPasswordRequest.passwordable_type = "Asset";}
+      elseif ($matchedWebsite -and $matchedWebsite.id -gt 0) { $NewPasswordRequest.passwordable_id = $($matchedWebsite.website.id ?? $matchedWebsite.id);                                               $NewPasswordRequest.passwordable_type = "Website" }
 
       foreach ($prop in $PassProps.Keys) {
         $val = $companyPass.$prop
@@ -67,11 +69,11 @@ if ($ITBoostData.ContainsKey("passwords")) {
       try {
         $newPass = $null
         if ($NewPasswordRequest.ContainsKey("Id") -and $NewPasswordRequest["Id"] -gt 0) {
-          $newpass = Set-HuduPassword @NewPasswordRequest -ErrorAction Stop
+          $newpass = Set-HuduPassword @NewPasswordRequest
           Write-Host ("Updated: {0}" -f ($newpass | ConvertTo-Json -Depth 5))
         }
         else {
-          $newpass = New-HuduPassword @NewPasswordRequest -ErrorAction Stop
+          $newpass = New-HuduPassword @NewPasswordRequest
           Write-Host ("Created: {0}" -f ($newpass | ConvertTo-Json -Depth 5))
         }
         $newPass= $newpass.asset_password ?? $newpass

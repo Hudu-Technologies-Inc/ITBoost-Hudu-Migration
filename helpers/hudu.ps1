@@ -27,6 +27,95 @@ function Clear-DupeDocuments {
             }, @{Expression='id'; Descending=$true} | Select-Object -Skip 1
          } | ForEach-Object { Invoke-HuduRequest -Method delete -Resource "/api/v1/uploads/$($_.id)" }
 }
+function Omni-Relate {
+    
+    function _Normalize-AssetName {
+        param([string]$Name)
+        if ([string]::IsNullOrWhiteSpace($Name)) { return "" }
+        $n = $Name.Normalize([Text.NormalizationForm]::FormKC)
+        $n = $n -replace '&nbsp;',' ' -replace '\s+',' '
+        $n = $n.Trim().ToLowerInvariant()
+        return $n
+    }
+
+    function _Normalize-WebsiteURL {
+        param([string]$Url)
+        if ([string]::IsNullOrWhiteSpace($Url)) { return $null }
+        $u = $Url.Trim()
+        if ($u -match '^(https?://)?(?<host>[^/]+)(?<rest>/.*)?$') {
+            $hostname = $matches.host.ToLowerInvariant()
+            return $hostname.ToLowerInvariant()
+        }
+        return $u.ToLowerInvariant()
+    }
+
+    if (get-command -name Set-HapiErrorsDirectory -ErrorAction SilentlyContinue){try {Set-HapiErrorsDirectory -skipRetry $true} catch {}}
+    write-host "obtaining companies..."; $allcompanies = get-huducompanies;
+    write-host "obtaining assets (please be patient, this can take some time.)"; $allAssets = get-huduassets;
+    write-host "obtaining websites..."; $allWebsites = get-huduwebsites;
+    write-host "obtaining articles... (please be patient, this can take some time.)"; $allArticles = get-huduarticles;
+
+    foreach ($c in $allcompanies) { 
+
+        $companyAssets = $allAssets | Where-Object { $_.company_id -eq $c.id }
+        $companywebsites = $allWebsites | Where-Object { $_.company_id -eq $c.id }
+        $companyArticles = $allArticles | Where-Object { $_.company_id -eq $c.id }
+
+        $companyAssetsByName = $companyAssets | Group-Object { _Normalize-AssetName $_.name } -AsHashTable -AsString
+
+        foreach ($a in $companyAssets) {
+            $normalizedAssetName = _Normalize-AssetName $a.name
+
+            $mentionedWebsites = @()
+            $mentionedArticles = @()
+            $mentionedAssets = @()
+
+            # websites and articles matched by name/description -> name of asset
+            if ($companywebsites) {
+                $mentionedWebsites = $companywebsites | Where-Object { $_.Notes -and $_.Notes.Contains($normalizedAssetName) }
+            }
+            if ($companyArticles) {
+                $mentionedArticles = $companyArticles | Where-Object { ($_.Name -and $_.Content.Contains($a.name)) -or ($_.Content -and $_.Content.Contains($normalizedAssetName)) }
+            }
+
+
+            # websites where name or url is mentioned in text/richtext fields of the asset
+            # articles with content or name mentioned in a website field (either website field or text/richtext fields)
+            $a.fields | Where-Object {$_.field_type -eq "Website"} | ForEach-Object {
+                $fieldValue = $_.value
+                $mentionedWebsites += $companywebsites | Where-Object { "$(_Normalize-WebsiteURL $fieldValue)*" -ilike "$(_Normalize-WebsiteURL $_.name)*" -or $_.name -icontains "$(_Normalize-WebsiteURL $fieldValue)" -or $_.name -icontains $normalizedAssetName }
+                $mentionedArticles += $companyArticles | Where-Object { $_.content -and $_.content.Contains("$(_Normalize-WebsiteURL $fieldValue)") -or ($_.Name -and $_.Name.Contains("$(_Normalize-WebsiteURL $fieldValue)")) }
+                $mentionedAssets += $companyAssets | Where-Object { $_.name -and $_.name.Contains("$(_Normalize-WebsiteURL $fieldValue)") }
+            }
+            $a.fields | Where-Object {$_.field_type -eq "RichText" -or $_.field_type -eq "Header" -or $_.field_type -eq "Embed"} | ForEach-Object {
+                $fieldValue = $_.value
+                $mentionedWebsites += $companywebsites | Where-Object { $fieldValue -icontains $normalizedAssetName -or $(_Normalize-AssetName $_.name) -ieq $normalizedAssetName -or $fieldValue -icontains $_.name -or $_.notes -icontains $normalizedAssetName -or $_.notes -icontains $a.name }
+                $mentionedArticles += $companyArticles | Where-Object { $_.content -and $_.content.Contains($normalizedAssetName) -or $_.content -icontains $a.name -or $normalizedAssetName -ieq (_Normalize-AssetName $_.name) }
+                $mentionedAssets += $companyAssets | Where-Object { $fieldValue -and $fieldValue.Contains($normalizedAssetName) -or $fieldValue.Contains($a.name) }
+            }       
+            $a.fields | Where-Object {$_.field_type -eq "Text" -or $_.field_type -eq "Phone" -or $_.field_type -eq "Email"} | ForEach-Object {
+                $fieldValue = $_.value
+                $mentionedArticles += $companyArticles | Where-Object { $(_Normalize-AssetName $_.name) -ieq $(_Normalize-AssetName $fieldValue) }
+                $mentionedWebsites += $companywebsites | Where-Object { $(_Normalize-AssetName $_.value) -ieq $normalizedAssetName }
+            }
+    
+            # "siblings": other assets with same normalized name but different id
+            $siblings = @($companyAssetsByName[$normalizedAssetName] | Where-Object { $_.id -ne $a.id })
+            $siblings | ForEach-Object {write-host "Sibling Asset $($a.name)@($($a.asset_layout_id)) -> $($_.name)@($($_.asset_layout_id))"; New-HuduRelation -FromableType "Asset" -ToableType "Asset" -FromableID $a.id -ToableID $_.id}
+            $mentionedWebsites | ForEach-Object {Write-Host "[$($c.name)] '$($a.name)' ($($a.id)) mentions website -> '$($_.name)' ($($_.id))"; New-HuduRelation -FromableType "Asset" -ToableType "Website" -FromableID $a.id -ToableID $_.id}
+            $mentionedArticles | ForEach-Object {Write-Host "[$($c.name)] '$($a.name)' ($($a.id)) mentions article -> '$($_.name)' ($($_.id))"; New-HuduRelation -FromableType "Asset" -ToableType "Article" -FromableID $a.id -ToableID $_.id}
+            $mentionedAssets | ForEach-Object {Write-Host "[$($c.name)] '$($a.name)' ($($a.id)) mentions asset -> '$($_.name)' ($($_.id))"; New-HuduRelation -FromableType "Asset" -ToableType "Asset" -FromableID $a.id -ToableID $_.id}        
+            write-host @"
+Siblings: $($siblings.count)
+Websites Mentioned: $($mentionedWebsites.count)
+Articles Mentioned: $($mentionedArticles.count)
+Assets Mentioned: $($mentionedAssets.count)
+"@
+        }
+    }
+    if (get-command -name Set-HapiErrorsDirectory -ErrorAction SilentlyContinue){try {Set-HapiErrorsDirectory -skipRetry $false} catch {}}
+
+}
 
 function New-HuduAddress {
     param([Parameter(Mandatory)][object]$Input)

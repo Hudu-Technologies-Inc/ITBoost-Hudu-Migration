@@ -52,11 +52,11 @@ foreach ($job in @(
 "websites",
 "configs",
 "expand-configs",
+"passwords",
 "documents",
 "runbooks",
 "standalone-notes",
-"gallery",
-"passwords"
+"gallery"
 )){
     $ITBoostData.JobState = @{Status="$job"; StartedAt=$(Get-Date); FinishedAt=$null}
     write-host "Starting $($ITBoostdata.JobState.Status) at $($ITBoostdata.JobState.StartedAt)"
