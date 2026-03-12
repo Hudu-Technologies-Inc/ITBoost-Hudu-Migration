@@ -54,9 +54,8 @@ if ($ITBoostData.ContainsKey("passwords")) {
         continue
       }
 
-      if     ($matchedAsset)   { $asset = $matchedAsset.asset ?? $matchedAsset; $NewPasswordRequest.passwordable_id = $asset.id;          $NewPasswordRequest.passwordable_type = "Asset"   }
-      elseif ($matchedWebsite) { $NewPasswordRequest.passwordable_id = $($matchedWebsite.website.id ?? $matchedWebsite.id);                                               $NewPasswordRequest.passwordable_type = "Website" }
-      else                     { $NewPasswordRequest.passwordable_id = $null;                                               $NewPasswordRequest.passwordable_type = $null }
+      if     ($matchedAsset -and $matchedAsset.id -gt 0)   { $asset = $matchedAsset.asset ?? $matchedAsset; $NewPasswordRequest.passwordable_id = $matchedAsset.id; $NewPasswordRequest.passwordable_type = "Asset";}
+      elseif ($matchedWebsite -and $matchedWebsite.id -gt 0) { $NewPasswordRequest.passwordable_id = $($matchedWebsite.website.id ?? $matchedWebsite.id);                                               $NewPasswordRequest.passwordable_type = "Website" }
 
       foreach ($prop in $PassProps.Keys) {
         $val = $companyPass.$prop
@@ -70,11 +69,11 @@ if ($ITBoostData.ContainsKey("passwords")) {
       try {
         $newPass = $null
         if ($NewPasswordRequest.ContainsKey("Id") -and $NewPasswordRequest["Id"] -gt 0) {
-          $newpass = Set-HuduPassword @NewPasswordRequest -ErrorAction Stop
+          $newpass = Set-HuduPassword @NewPasswordRequest
           Write-Host ("Updated: {0}" -f ($newpass | ConvertTo-Json -Depth 5))
         }
         else {
-          $newpass = New-HuduPassword @NewPasswordRequest -ErrorAction Stop
+          $newpass = New-HuduPassword @NewPasswordRequest
           Write-Host ("Created: {0}" -f ($newpass | ConvertTo-Json -Depth 5))
         }
         $newPass= $newpass.asset_password ?? $newpass
