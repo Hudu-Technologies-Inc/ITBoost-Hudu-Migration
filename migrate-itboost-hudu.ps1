@@ -47,16 +47,16 @@ foreach ($job in @(
 "read-csvs",
 "get-hududata",
 "companies",
-# "locations",
-# "contacts",
-# "websites",
-# "configs",
-# "expand-configs",
-"passwords"
-# "documents",
-# "runbooks",
-# "standalone-notes",
-# "gallery"
+"locations",
+"contacts",
+"websites",
+"configs",
+"expand-configs",
+"passwords",
+"documents",
+"runbooks",
+"standalone-notes",
+"gallery"
 )){
     $ITBoostData.JobState = @{Status="$job"; StartedAt=$(Get-Date); FinishedAt=$null}
     write-host "Starting $($ITBoostdata.JobState.Status) at $($ITBoostdata.JobState.StartedAt)"
@@ -66,18 +66,18 @@ foreach ($job in @(
 }
 $flexiLayoutsCompleted = $false
 $flexIdx = 0
-# while ($false -eq $flexiLayoutsCompleted){
-#     $flexIdx++
-#     write-host "Starting flexible asset layouts round ($flexIdx) (optional, but reccomended)"
-#     $ITBoostData.JobState = @{Status="flexi-round-$idx"; StartedAt=$(Get-Date); FinishedAt=$null}
-#     if ("yes" -ieq $(select-objectfromlist -objects @("yes","No") -message "do you wish to process flexible layouts round-$flexIdx now?")){
-#         . .\jobs\flexi-layout.ps1
-#     } else {
-#         $flexiLayoutsCompleted=$true
-#     }
-#     $ITBoostData.FinishedAt=$(Get-Date)
-#     Write-Host "$($ITBoostData.JobState.Status) Completed"; $ITBoostData.CompletedJobs+=$ITBoostData.JobState;
-# }
+while ($false -eq $flexiLayoutsCompleted){
+    $flexIdx++
+    write-host "Starting flexible asset layouts round ($flexIdx) (optional, but reccomended)"
+    $ITBoostData.JobState = @{Status="flexi-round-$idx"; StartedAt=$(Get-Date); FinishedAt=$null}
+    if ("yes" -ieq $(select-objectfromlist -objects @("yes","No") -message "do you wish to process flexible layouts round-$flexIdx now?")){
+        . .\jobs\flexi-layout.ps1
+    } else {
+        $flexiLayoutsCompleted=$true
+    }
+    $ITBoostData.FinishedAt=$(Get-Date)
+    Write-Host "$($ITBoostData.JobState.Status) Completed"; $ITBoostData.CompletedJobs+=$ITBoostData.JobState;
+}
 Write-Host "Wrapping Up"
 . .\jobs\wrap-up.ps1
 . .\jobs\relate-all.ps1
