@@ -279,7 +279,11 @@ foreach ($company in $groupedflexis.Keys) {
         $docsLinked = @()
         $assetsRelated = @()
         $passwordsLinked = @()
-
+        if ("$GivenName".Length -ge 5){
+            foreach ($p in $(Get-HuduPasswords -companyID $matchedcompany.id | where-object {$_ -and $_.id -and $_.id -gt 0 -and $_.name -ilike "*$GivenName*"})){
+                new-hudurelation -toable_type "AssetPassword" -fromable_type "Asset" -toable_id $p.id -fromable_id $newFlexi.id
+            }
+        }
         # Link documents
         foreach ($doc in $DocFields){
             $DocName = Safedecode $companyflexi.$doc

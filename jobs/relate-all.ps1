@@ -21,7 +21,7 @@ foreach ($key in $itboostdata.keys){
             $GivenName = $($matched.name ?? $matched.$AltNameKey ?? $matched.$key ?? $null)
         }
         if ([string]::IsNullOrEmpty($givenName)){
-            $nameProp = select-objectfromlist -message "which NameProp for $key?" -objects $(Get-CSVProperties $matched)
+            $nameProp = select-objectfromlist -message "which property to use for name regarding $key?" -objects $(Get-CSVProperties $matched)
             $GivenName = $matched.$nameProp
         }
         if ([string]::IsNullOrEmpty($givenName)){

@@ -1,9 +1,9 @@
 $PassProps = @{
-  resource_type = "PasswordType"   # verify this param name exists; many modules use PasswordTypeId or similar
+  resource_type = "PasswordType"
   username      = "Username"
   password      = "Password"
-  notes         = "Description"    # confirm the param is Description (not Notes)
-  server        = "Url"            # many cmdlets use Url, not URL
+  notes         = "Description"
+  server        = "Url"
 }
 
 # load companies index if available
@@ -17,10 +17,13 @@ if ($ITBoostData.ContainsKey("passwords")) {
 
   foreach ($company in $passwords.Keys) {
     Write-Host "starting $company"
-    $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
+    $matchedCompany = Get-HuduCompanyFromName -CompanyName $company -deepCompanySearch $true -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null)
     Write-Host "Matched to company $($matchedCompany.name)"
     if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { 
-        continue
+        $matchedCompany = New-HuduCompany -name $company
+        $matchedCompany = get-huducompanies -Name $company | select-object -first 1
+        $matchedCompany = $matchedCompany.company ?? $matchedCompany
+        Write-Host "Created and matched to company $($matchedCompany.name) with ID $($matchedCompany.id)"
      }
 
     $companyPasswords = Get-HuduPasswords -CompanyId $matchedCompany.id
