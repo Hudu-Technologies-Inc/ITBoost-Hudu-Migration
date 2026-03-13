@@ -13,7 +13,7 @@ if ($ITBoostData.ContainsKey("passwords")) {
   $passwords = $ITBoostData.passwords.CSVData | Group-Object { $_.organization } -AsHashTable -AsString
   if (-not $ITBoostData.passwords.ContainsKey('matches')) { $ITBoostData.passwords['matches'] = @() }
 
-  try { $null = Get-HuduPasswords -ErrorAction Stop } catch { } # warm the pipe
+  try { $null = Get-HuduPasswords } catch { } # warm the pipe
 
   foreach ($company in $passwords.Keys) {
     Write-Host "starting $company"
@@ -32,30 +32,26 @@ if ($ITBoostData.ContainsKey("passwords")) {
 
     foreach ($companyPass in $passwords[$company]) {
       # try to find an existing password by name
+      $matchedAsset = $null; $matchedpassword = $null; $matchedwebsite=$null;
       $matchedPassword = $companyPasswords | Where-Object { test-equiv -A $_.name -B $companyPass.name } | Select-Object -First 1
-      $matchedAsset    = $companyAssets   | Where-Object { test-equiv -A $_.name -B $companyPass.name } | Select-Object -First 1
+      $matchedAsset    = $companyAssets   | Where-Object { (test-equiv -A $_.name -B $companyPass.name) -or ($_.name.length -ge 5 -and $_.name -ilike "*$($companyPass.name)*") -or ($companyPass.name.length -ge 5 -and $companypass.name -ilike "*$($_.name)*") }
       $matchedWebsite  = $companyWebsites | Where-Object { test-equiv -A $_.name -B ($companyPass.server ?? $companyPass.name) } | Select-Object -First 1
 
       $NewPasswordRequest = @{
-        Name      = "$($companyPass.name)".Trim()
+        Name      = ("$($companyPass.name)".Trim())
         CompanyId = $matchedCompany.id
       }
 
       if ($matchedPassword) {
-        Write-Host "matched existing password: $($matchedPassword.name)"
-                    $ITBoostData.passwords["matches"]+=@{
-                        CompanyName=$companyPass.organization
-                        ITBID=$companyPass.id
-                        Name=$matchedPassword.name
-                        HuduID=$matchedPassword.id
-                        HuduObject=$matchedPassword
-                        HuduCompanyId=$matchedPassword.company_id
-                    }            
-        continue
+        $NewPasswordRequest.Id = $matchedPassword.id
       }
+      $matchedAsset = @($matchedAsset)
 
-      if     ($matchedAsset -and $matchedAsset.id -gt 0)   { $asset = $matchedAsset.asset ?? $matchedAsset; $NewPasswordRequest.passwordable_id = $matchedAsset.id; $NewPasswordRequest.passwordable_type = "Asset";}
-      elseif ($matchedWebsite -and $matchedWebsite.id -gt 0) { $NewPasswordRequest.passwordable_id = $($matchedWebsite.website.id ?? $matchedWebsite.id);                                               $NewPasswordRequest.passwordable_type = "Website" }
+      $firstMatch  = $matchedAsset | Select-Object -First 1
+      $restMatches = $matchedAsset | Select-Object -Skip 1
+      if     ($null -ne $firstMatch -and $firstMatch.id -gt 0)   { $firstMatch = $firstMatch.asset ?? $firstMatch; $NewPasswordRequest.passwordable_id = $firstMatch.id; $NewPasswordRequest.passwordable_type = "Asset";}
+      write-host "matched asset $($firstmatch.name) for password $($companyPass.name)... $($restmatches.count) other matches found" -foregroundcolor yellow
+
 
       foreach ($prop in $PassProps.Keys) {
         $val = $companyPass.$prop
@@ -79,8 +75,7 @@ if ($ITBoostData.ContainsKey("passwords")) {
         $newPass= $newpass.asset_password ?? $newpass
       }
       catch {
-        Write-Host "Error creating/updating password:"
-        $_ | Format-List * -Force | Out-String | Write-Host
+        Write-Host "Error creating/updating password: $_"
       }
       if ($null -ne $newpass) {
         $newpass = $newpass.asset_password ?? $newpass
@@ -92,10 +87,26 @@ if ($ITBoostData.ContainsKey("passwords")) {
             huduCompanyId = $($newPass.company_id ?? $matchedCompany.id)
             HuduObject=$newpass
         }
+        foreach ($othermatch in $($restMatches)){
+            if (get-command -name Set-HapiErrorsDirectory -ErrorAction SilentlyContinue){try {Set-HapiErrorsDirectory -skipRetry $true} catch {}}
+            new-hudurelation -fromable_id $newpass.id -toable_id $othermatch.id -fromable_type "AssetPassword" -toable_type "Asset"
+            if (get-command -name Set-HapiErrorsDirectory -ErrorAction SilentlyContinue){try {Set-HapiErrorsDirectory -skipRetry $false} catch {}}
+          }
+          if ($matchedWebsite -ne $null){
+            if (get-command -name Set-HapiErrorsDirectory -ErrorAction SilentlyContinue){try {Set-HapiErrorsDirectory -skipRetry $true} catch {}}
+            new-hudurelation -fromable_id $newpass.id -toable_id $matchedWebsite.id -fromable_type "AssetPassword" -toable_type "Website"
+            if (get-command -name Set-HapiErrorsDirectory -ErrorAction SilentlyContinue){try {Set-HapiErrorsDirectory -skipRetry $false} catch {}}
+
+          }
+
+        }
       }
     }
   }
-}
+
+
+  write-host "processing embedded configurations passwords!"
+$passwordsFromEmbedded = Set-PasswordsFromEmbeddedCSVobjects -itboostdata $itboostdata -keyname "configurations"
 foreach ($p in $(get-hudupasswords)){
     $pass = $p.asset_password ?? $p; $desc = $pass.description;
     if ([string]::IsNullOrEmpty($desc)){write-host "empty description on pass $($pass.id), skipping"; continue}
@@ -103,3 +114,5 @@ foreach ($p in $(get-hudupasswords)){
     if ($desc -ne $descupdated -and -not ([string]::IsNullOrWhiteSpace(($descupdated) -and $pass.id -ne $null))){Set-HuduPassword -id $pass.id -CompanyId $pass.company_id -Description "$descupdated"} else {write-host "Skipping description on pass - no change for $($pass.id)"; continue;}
 
 }
+$passwordsFromEmbedded | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "PasswordsFromEmbeds.json")) -Force
+$ITBoostData.passwords["matches"] | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "MatchedPasswords.json")) -Force

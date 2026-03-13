@@ -80,8 +80,6 @@ foreach ($r in $runbooks) {
     foreach ($img in $images) {
         Copy-Item -Path $img.FullName -Destination (Join-Path $dest $img.Name) -Force
     }
-
-    # company matching unchanged, just possibly cleaned up
     if (-not $alwaysInternal) {
         $matchedRecord = $itboostdata.rb.csvdata |
             Where-Object { "$($_.id)" -ieq "$($r.Name)" } |
@@ -97,7 +95,6 @@ foreach ($r in $runbooks) {
         } else {
             $matchedCompany = $internalCompany
         }
-
         if (-not $matchedCompany) {
             Write-Host "No matching company found for runbook $($r.Name), assigning to internal company $($internalCompany.Name)"
             $matchedCompany = $internalCompany
@@ -106,8 +103,19 @@ foreach ($r in $runbooks) {
         $matchedCompany = $internalCompany
     }
 
+    $matchedDocument = $null;
+    if ($matchedCompany.id -and $matchedCompany.id -eq $internalcompany.id){
+        $matchedDocument = get-huduarticles | Where-Object {$($null -eq $_.company_id) -or ($_.company_id -eq $matchedCompany.id) -and $(test-equiv -A $_.name -B $docName)} | Select-Object -first 1
+    } else {
+        $matchedDocument = get-huduarticles | Where-Object {$_.company_id -eq $matchedCompany.id -and $(test-equiv -A $_.name -B $docName)} | Select-Object -first 1
+    }
+    if ($matcheddocument -ne $null){
+        write-host "skipping on match for document $docName $($matchedDocument.id) for runbook "
+        continue
+    }
     $matchedCompany = $matchedCompany.company ?? $matchedCompany
     Write-Host "Creating article for company $($matchedCompany.Name) - $docName"
+
     try {
         $newRunbook =$null
         $newRunbook = Set-HuduArticleFromResourceFolder -resourcesFolder $dest -companyName $matchedCompany.name -title $docName
