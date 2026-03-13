@@ -70,7 +70,7 @@ while ($false -eq $flexiLayoutsCompleted){
     $flexIdx++
     write-host "Starting flexible asset layouts round ($flexIdx) (optional, but reccomended)"
     $ITBoostData.JobState = @{Status="flexi-round-$idx"; StartedAt=$(Get-Date); FinishedAt=$null}
-    if ("yes" -ieq $(select-objectfromlist -objects @("yes","No") -message "do you wish to process flexible layouts round-$flexIdx now?")){
+    if ("yes" -ieq $(select-objectfromlist -objects @("yes","No") -message "do you wish to process flexible layouts round-$flexIdx now? (select 1/yes or 2/no)")){
         . .\jobs\flexi-layout.ps1
     } else {
         $flexiLayoutsCompleted=$true

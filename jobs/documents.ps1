@@ -127,7 +127,7 @@ foreach ($company in $groupeddocuments.Keys) {
      }
      $matchedCompany = $matchedCompany.company ?? $matchedCompany
     if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { 
-        continue
+        $matchedcompany = $internalcompany
     }
     foreach ($companydocument in $documentsForCompany){
         $matchedDocument = $null
