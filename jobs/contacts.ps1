@@ -151,8 +151,8 @@ foreach ($company in $groupedContacts.Keys) {
                 HuduObject       = $matchedcontact
                 HuduCompanyId    = $matchedcontact.company_id
             }
-            continue
         } else {
+            if ($true -eq $skiponmatch){continue}
             $newcontactrequest=@{
                 Name="$($companyContact.first_name) $($companyContact.last_name)".Trim()
                 CompanyID = $matchedCompany.id

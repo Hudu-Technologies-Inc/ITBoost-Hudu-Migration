@@ -44,6 +44,8 @@ if ($ITBoostData.ContainsKey("passwords")) {
 
       if ($matchedPassword) {
         $NewPasswordRequest.Id = $matchedPassword.id
+        if ($true -eq $skiponmatch){continue}
+
       }
       $matchedAsset = @($matchedAsset)
 
@@ -105,8 +107,17 @@ if ($ITBoostData.ContainsKey("passwords")) {
   }
 
 
-  write-host "processing embedded configurations passwords!"
-$passwordsFromEmbedded = Set-PasswordsFromEmbeddedCSVobjects -itboostdata $itboostdata -keyname "configurations"
+$passwordsFromEmbedded=@{}
+write-host "processing embedded configurations passwords!"
+foreach ($possiblepasswordEmbed in @(
+"configurations","organizations","contacts","documents","domains","locations"
+)){
+  write-host "checking $possiblepasswordEmbed for embedded passwords"
+   if ($ITBoostData.ContainsKey($possiblepasswordEmbed)){
+    $passwordsFromEmbedded[$possiblepasswordEmbed] = Set-PasswordsFromEmbeddedCSVobjects -itboostdata $itboostdata -keyname "$possiblepasswordEmbed"
+   }
+}
+
 foreach ($p in $(get-hudupasswords)){
     $pass = $p.asset_password ?? $p; $desc = $pass.description;
     if ([string]::IsNullOrEmpty($desc)){write-host "empty description on pass $($pass.id), skipping"; continue}

@@ -136,6 +136,7 @@ foreach ($company in $groupeddocuments.Keys) {
 
         $matchedDocument = $matchedDocument ?? $($(Get-HuduArticles -CompanyId $matchedCompany.id -name $companydocument.name) | Select-Object -first 1)
         if ($matcheddocument){
+            if ($true -eq $skiponmatch){continue}
             # Write-Host "matched $($companydocument.name) to doc in Hudu @ $($matchedDocument.url); updating"
                 $ITBoostData.documents['matches'] += @{
                     CompanyName      = $companydocument.organization
@@ -146,6 +147,7 @@ foreach ($company in $groupeddocuments.Keys) {
                     HuduCompanyId    = $matcheddocument.company_id
                 }
                 continue
+
             if ($DeleteDocsMode -and $true -eq $DeleteDocsMode){
                 if (-not $matchedDocument -or -not $matchedDocument.id -or $matchedDocument.id -lt 1){continue}
                 write-host "Deleting uploads fo $($matcheddocument.id)"

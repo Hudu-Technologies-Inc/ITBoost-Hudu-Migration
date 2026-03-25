@@ -15,7 +15,7 @@ if ($ITBoostData.ContainsKey("domains")){
             $matchedCompany = Get-HuduCompanies -id $internalCompanyId; $matchedCompany = $matchedCompany.company ?? $matchedCompany;
         }
         if ($null -eq $matchedCompany -or $null -eq $matchedCompany.id) {
-            continue
+            $matchedCompany = get-huducompanies -id $internalCompanyId; $matchedCompany = $matchedCompany.company ?? $matchedCompany;
         }
 
         $notes = $(SafeDecode $_.notes).description

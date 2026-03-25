@@ -67,6 +67,7 @@ if ($ITBoostData.ContainsKey("locations")){
         write-host "$($locationsForCompany.count) locations for $company, hudu company id: $($matchedCompany.id)"
         foreach ($companyLocation in $locationsForCompany){
             if ($locationsSeen -contains $companyLocation.name){continue} else {$locationsSeen+="$($companyLocation.name)"}
+            $fields = @()
             $matchedlocation = $null
             $matchedlocation = $allHuduLocations | Where-Object {(test-equiv -A $_.name -B $companyLocation.name) -and $_.company_id -eq $matchedCompany.id} | Select-Object -First 1
             $matchedlocation = $matchedlocation ?? $(get-huduassets -AssetLayoutId $LocationLayout.id -CompanyId $matchedCompany.id -name $companyLocation.name | select-object -first 1)
@@ -81,13 +82,13 @@ if ($ITBoostData.ContainsKey("locations")){
                     HuduCompanyId=$($matchedlocation.company_id ?? $matchedCompany.id)
                 }
             } else {
+                if ($true -eq $skiponmatch){continue}
+
                 $NewAddressRequest=@{
                     Name=$companyLocation.name
                     CompanyID = $matchedCompany.id
                     AssetLayoutId=$LocationLayout.id
                 }
-                $fields = @()
-
                 $fields = foreach ($key in $LocationsMap.Keys) {
                     # pull value from CSV row
                     $rowVal = $row.$key ?? $null
@@ -99,9 +100,7 @@ if ($ITBoostData.ContainsKey("locations")){
                     [ordered]@{ $($huduField) = $rowVal.Trim() }
                 }
 
-                if ($fields.count -ge 1){
-                    $NewAddressRequest["Fields"]=$fields
-                }
+
             }
             if ($null -ne $AddressDataField){
                 $newAddress=$null
@@ -117,14 +116,17 @@ if ($ITBoostData.ContainsKey("locations")){
                 }
                 if ($null -ne $newAddress){
                     $fields+=@{$AddressDataField = $newAddress}
-                    $NewAddressRequest["Fields"]=$fields
                 }
             }
+            if ($fields.count -ge 1){
+                $NewAddressRequest["Fields"]=$fields
+            }            
             if ($null -ne $matchedlocation -and $matchedlocation.id -gt 0 -and $true -eq $mergeOnMatch){
                 write-host "merging on match..."
                 $merged = Merge-Matches -originalAsset $matchedlocation -newFields $fields -destassetlayout $LocationLayout -preferOriginal ($preferOriginal ?? $true)
                 $NewAddressRequest["Fields"]=$merged.Fields
                 $NewAddressRequest["id"]=$matchedlocation.id
+
             }
             
 
