@@ -112,7 +112,10 @@ write-host "processing embedded configurations passwords!"
 foreach ($possiblepasswordEmbed in @(
 "configurations","organizations","contacts","documents","domains","locations"
 )){
-  $passwordsFromEmbedded[$possiblepasswordEmbed] = Set-PasswordsFromEmbeddedCSVobjects -itboostdata $itboostdata -keyname "$possiblepasswordEmbed"
+  write-host "checking $possiblepasswordEmbed for embedded passwords"
+   if ($ITBoostData.ContainsKey($possiblepasswordEmbed)){
+    $passwordsFromEmbedded[$possiblepasswordEmbed] = Set-PasswordsFromEmbeddedCSVobjects -itboostdata $itboostdata -keyname "$possiblepasswordEmbed"
+   }
 }
 
 foreach ($p in $(get-hudupasswords)){

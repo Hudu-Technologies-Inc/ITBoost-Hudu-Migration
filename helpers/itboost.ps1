@@ -71,6 +71,15 @@ function Set-PasswordsFromEmbeddedCSVobjects {
                     CompanyId = $matchedCompany.id
                     Password  = $configsPassword.password
                 }
+                $existingpass = $null; $existingPass = get-hudupasswords -CompanyId $matchedCompany.id | Where-Object {
+                    $_.name -ieq $newPasswordRequest.Name -and $_.passwordable_type -ieq $passwordableType
+                } | Select-Object -First 1
+                $existingpass = $existingpass.asset_password ?? $existingpass
+                if ($existingPass) {
+                    Write-Host "Password '$($newPasswordRequest.Name)' already exists for company '$($matchedCompany.name)' and type '$passwordableType', skipping creation." -ForegroundColor Yellow
+                    continue
+                }
+
 
                 if (-not [string]::IsNullOrEmpty($configsPassword.userName)) {
                     $newPasswordRequest.Username = $configsPassword.userName
@@ -88,7 +97,7 @@ function Set-PasswordsFromEmbeddedCSVobjects {
                 Write-Host ($newPasswordRequest | ConvertTo-Json -Depth 99)
 
                 try {
-                    # $newPass = New-HuduPassword @newPasswordRequest
+                    $newPass = New-HuduPassword @newPasswordRequest
                     $embeddedpassescreated+=$newPass
                     Write-Host ("Created: {0}" -f ($newPass | ConvertTo-Json -Depth 5))
                 }
