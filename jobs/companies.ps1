@@ -17,7 +17,7 @@ if ($ITBoostData.ContainsKey("organizations")){
                 ITBID=$row.id
                 HuduID=$matchedCompany.id
             }
-            continue
+            if ($true -eq $skiponmatch){continue}
         } else {
             $newCompanyRequest = @{
                 Name=$row.name
