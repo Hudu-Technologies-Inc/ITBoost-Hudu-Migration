@@ -81,8 +81,8 @@ if ($ITBoostData.ContainsKey("locations")){
                     HuduObject=$matchedlocation
                     HuduCompanyId=$($matchedlocation.company_id ?? $matchedCompany.id)
                 }
-            } else {
                 if ($true -eq $skiponmatch){continue}
+            } else {
 
                 $NewAddressRequest=@{
                     Name=$companyLocation.name
