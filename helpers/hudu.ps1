@@ -27,6 +27,63 @@ function Clear-DupeDocuments {
             }, @{Expression='id'; Descending=$true} | Select-Object -Skip 1
          } | ForEach-Object { Invoke-HuduRequest -Method delete -Resource "/api/v1/uploads/$($_.id)" }
 }
+
+function remove-dupeassets {
+    param ([bool]$dryRun = $true)
+    write-host "RUNNING IN $($dryRun -eq $true ? 'DRY RUN' : 'LIVE') MODE. NO ASSETS WILL BE REMOVED IN DRY RUN MODE." -ForegroundColor Yellow
+
+$candidates =
+    Get-HuduAssets |
+    Group-Object {
+        '{0}|{1}|{2}' -f (
+            $_.company_id ?? -1
+        ), (
+            $_.asset_layout_id ?? -1
+        ), (
+            (([string]$_.name).Trim() -replace '\s+', ' ').ToLower()
+        )
+    } |
+    Where-Object Count -gt 1 |
+    ForEach-Object {
+        $sorted = $_.Group | Sort-Object `
+            @{ Expression = {
+                    $d = $_.created_at ?? $_.updated_at;
+                    try { [datetime]$d } catch { Get-Date '1900-01-01' }
+                }; Descending = $false
+            },
+            @{ Expression = 'id'; Descending = $false }
+
+        $keeper = $sorted | Select-Object -First 1
+        $dupes  = $sorted | Select-Object -Skip 1
+
+        foreach ($d in $dupes) {
+            [pscustomobject]@{
+                LayoutId       = $d.asset_layout_id
+                CompanyId      = $d.company_id
+                Name           = $d.name
+                KeepId         = $keeper.id
+                RemoveId       = $d.id
+                KeepCreated    = $keeper.created_at
+                RemoveCreated  = $d.created_at
+                KeepUpdated    = $keeper.updated_at
+                RemoveUpdated  = $d.updated_at
+                Archived       = $d.archived
+            }
+        }
+    }
+
+$candidates | Format-Table -AutoSize
+if ($true -eq $dryRun) {
+    Write-Host "Dry run mode enabled. No assets will be removed."
+    return $candidates
+} else {
+    foreach ($c in $candidates) {
+        Remove-HuduAsset -Id $c.RemoveId -Confirm:$false
+    }
+    return $candidates
+}
+}
+
 function Omni-Relate {
     
     function _Normalize-AssetName {
