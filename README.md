@@ -1,3 +1,7 @@
+> [!CAUTION]
+> **Please note that Exports from IT Boost are not stable and are often missing data. The migration script will migrate data the best it can based on the export file provided. 
+
+
 # ITBoost-Hudu-Migration
 
 Easy Migration from ITBoost to Hudu
