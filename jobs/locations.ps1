@@ -91,7 +91,7 @@ if ($ITBoostData.ContainsKey("locations")){
                 }
                 $fields = foreach ($key in $LocationsMap.Keys) {
                     # pull value from CSV row
-                    $rowVal = $row.$key ?? $null
+                    $rowVal = $companyLocation.$key ?? $null
                     if ($null -eq $rowVal) { continue }
                     $rowVal = [string]$rowVal
                     if ([string]::IsNullOrWhiteSpace($rowVal)) { continue }
@@ -104,15 +104,15 @@ if ($ITBoostData.ContainsKey("locations")){
             }
             if ($null -ne $AddressDataField){
                 $newAddress=$null
-                if ($row.address_1 -or $row.address_2 -or $row.city -or $row.region -or $row.postal_code -or $row.country) {
+                if ($companyLocation.address_1 -or $companyLocation.address_2 -or $companyLocation.city -or $companyLocation.region -or $companyLocation.postal_code -or $companyLocation.country) {
                     $NewAddress = [ordered]@{
-                        address_line_1 = $row.address_1
-                        city           = $row.city
-                        state          = $(Normalize-Region $row.region)
-                        zip            = $(Normalize-Zip $row.postal_code)
-                        country_name   = $(Normalize-CountryName $row.country)
+                        address_line_1 = $companyLocation.address_1
+                        city           = $companyLocation.city
+                        state          = $(Normalize-Region $companyLocation.region)
+                        zip            = $(Normalize-Zip $companyLocation.postal_code)
+                        country_name   = $(Normalize-CountryName $companyLocation.country)
                     }
-                    if (-not [string]::IsNullOrEmpty($row.address_2)) { $NewAddress['address_line_2'] = $addr2 }
+                    if (-not [string]::IsNullOrEmpty($companyLocation.address_2)) { $NewAddress['address_line_2'] = $companyLocation.address_2 }
                 }
                 if ($null -ne $newAddress){
                     $fields+=@{$AddressDataField = $newAddress}
