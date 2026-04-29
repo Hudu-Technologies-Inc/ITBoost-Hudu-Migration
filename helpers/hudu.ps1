@@ -361,7 +361,7 @@ function Omni-Relate {
         )
 
         if ($FromType -eq $ToType -and [string]$FromId -eq [string]$ToId) { return }
-
+        if ($FromType -eq "IPAddress" -and $ToType -eq "IPAddress") { return }
         $relationKey = "$FromType|$FromId|$ToType|$ToId"
         if ($SeenRelations.ContainsKey($relationKey)) { return }
         $SeenRelations[$relationKey] = $true
@@ -520,7 +520,7 @@ function Omni-Relate {
                 $mentionedArticles += $companyArticles | Where-Object { $_.content -and $_.content.Contains($normalizedAssetName) -or $_.content -icontains $a.name -or $normalizedAssetName -ieq (_Normalize-AssetName $_.name) }
                 $mentionedAssets += _Get-AssetsMentionedInTexts -Assets $companyAssets -SourceAsset $a -Texts @($fieldValue)
             }       
-            $a.fields | Where-Object {$_.field_type -eq "Text"  -or $_.field_type -ieq "Link"  -or $_.field_type -ieq "ConfidentialText"  -or $_.field_type -ieq "Phone"  -or $_.field_type -ieq "Copyable Text"} | ForEach-Object {
+            $a.fields | Where-Object {$_.field_type -eq "Text"  -or $_.field_type -ieq "Link"  -or $_.field_type -ieq "ConfidentialText"  -or $_.field_type -ieq "Phone"  -or $_.field_type -ieq "Copyable_Text"} | ForEach-Object {
                 $fieldValue = $_.value
                 foreach ($companyProcess in $companyProcesses){
                     if (
