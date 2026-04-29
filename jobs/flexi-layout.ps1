@@ -212,26 +212,26 @@ foreach ($company in $groupedflexis.Keys) {
 
             $fields += @{ $huduField = "$setVal".Trim() }
         }
-        if ($tagMaps.ContainsKey("location") -and $null -ne $tagMaps["location"]){
-            if (-not $([string]::IsNullOrWhiteSpace($companyflexi.location))){
-                $locationDeserialized = SafeDecode $companyflexi.location
-                $locationDeserialized = $locationDeserialized.value ?? $locationDeserialized.text ?? $locationDeserialized.location ?? $locationDeserialized
-                if (-not $([string]::IsNullOrWhiteSpace($locationDeserialized))){
-                $matchedlocation = Get-HuduAssets -AssetLayoutId ($LocationLayout.id ?? 2) -CompanyId $matchedCompany.id |
-                                    Where-Object { test-equiv -A $_.name -B $locationDeserialized } |
-                                    Select-Object -First 1
-                                    if ($matchedlocation){
-                    $fields+=@{"Location" = "[$($matchedlocation.id)]"}
-                    }
-                }
-            } else {
-                write-host "no location field to map for $GivenName, skipping location mapping"
-            }
-        } elseif ($flexisMap.ContainsKey("location")){
-            $locationDeserialized = SafeDecode $companyflexi.location
-            $locationDeserialized = $locationDeserialized.value ?? $locationDeserialized.text ?? $locationDeserialized.location ?? $locationDeserialized
-            $fields+=@{"Location" = "[$($locationDeserialized)]"}
-        }
+        # if ($tagMaps.ContainsKey("location") -and $null -ne $tagMaps["location"]){
+        #     if (-not $([string]::IsNullOrWhiteSpace($companyflexi.location))){
+        #         $locationDeserialized = SafeDecode $companyflexi.location
+        #         $locationDeserialized = $locationDeserialized.value ?? $locationDeserialized.text ?? $locationDeserialized.location ?? $locationDeserialized
+        #         if (-not $([string]::IsNullOrWhiteSpace($locationDeserialized))){
+        #         $matchedlocation = Get-HuduAssets -AssetLayoutId ($LocationLayout.id ?? 2) -CompanyId $matchedCompany.id |
+        #                             Where-Object { test-equiv -A $_.name -B $locationDeserialized } |
+        #                             Select-Object -First 1
+        #                             if ($matchedlocation){
+        #             $fields+=@{"Location" = "[$($matchedlocation.id)]"}
+        #             }
+        #         }
+        #     } else {
+        #         write-host "no location field to map for $GivenName, skipping location mapping"
+        #     }
+        # } elseif ($flexisMap.ContainsKey("location")){
+        #     $locationDeserialized = SafeDecode $companyflexi.location
+        #     $locationDeserialized = $locationDeserialized.value ?? $locationDeserialized.text ?? $locationDeserialized.location ?? $locationDeserialized
+        #     $fields+=@{"Location" = "[$($locationDeserialized)]"}
+        # }
         $SmooshedNotes = @()
     foreach ($smooshLabel in $smooshLabels){
         $rowVal = $null

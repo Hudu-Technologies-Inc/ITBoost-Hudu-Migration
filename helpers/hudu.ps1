@@ -293,6 +293,59 @@ function Omni-Relate {
         return @($texts)
     }
 
+    function _Get-RelationTargetIdentifiers {
+        param(
+            [string]$Type,
+            $Item,
+            [object[]]$PasswordFolders
+        )
+
+        if ($Type -eq 'Asset') {
+            return @(_Get-AssetIdentifiers -Asset $Item)
+        }
+
+        $identifiers = [System.Collections.Generic.List[string]]::new()
+        _Add-UniqueText -List $identifiers -Value $Item.name
+
+        switch ($Type) {
+            'Website' {
+                _Add-UniqueText -List $identifiers -Value (_Normalize-WebsiteURL $Item.name)
+                if ($Item.PSObject.Properties['url']) {
+                    _Add-UniqueText -List $identifiers -Value $Item.url
+                    _Add-UniqueText -List $identifiers -Value (_Normalize-WebsiteURL $Item.url)
+                }
+            }
+            'Procedure' {
+                foreach ($task in @($Item.procedure_tasks_attributes)) {
+                    if ($task -is [string]) {
+                        _Add-UniqueText -List $identifiers -Value $task
+                    } else {
+                        _Add-UniqueText -List $identifiers -Value $task.name
+                    }
+                }
+            }
+            'AssetPassword' {
+                _Add-UniqueText -List $identifiers -Value (_Get-PasswordFolderName -Password $Item -PasswordFolders $PasswordFolders)
+            }
+            'Network' {
+                foreach ($propertyName in @('network', 'cidr', 'subnet', 'gateway')) {
+                    if ($Item.PSObject.Properties[$propertyName]) {
+                        _Add-UniqueText -List $identifiers -Value ([string]$Item.$propertyName)
+                    }
+                }
+            }
+            'IPAddress' {
+                foreach ($propertyName in @('ip_address', 'address', 'hostname')) {
+                    if ($Item.PSObject.Properties[$propertyName]) {
+                        _Add-UniqueText -List $identifiers -Value ([string]$Item.$propertyName)
+                    }
+                }
+            }
+        }
+
+        return @($identifiers)
+    }
+
     function _New-TrackedRelation {
         param(
             [string]$CompanyName,
@@ -436,7 +489,7 @@ function Omni-Relate {
                 } 
             }
 
-            $a.fields | Where-Object {$_.field_type -eq "RichText" -or $_.field_type -ieq "Heading"} | ForEach-Object {
+            $a.fields | Where-Object {$_.field_type -eq "RichText" -or $_.field_type -ieq "Heading"  -or $_.field_type -ieq "Embed"} | ForEach-Object {
                 $fieldValue = $_.value
                 foreach ($companyProcess in $companyProcesses){
                     if (($companyProcess.name -and $fieldValue -icontains $companyProcess.name -or $companyProcess.procedure_tasks_attributes.name -and $fieldValue -icontains $companyProcess.procedure_tasks_attributes.name)){
@@ -467,7 +520,7 @@ function Omni-Relate {
                 $mentionedArticles += $companyArticles | Where-Object { $_.content -and $_.content.Contains($normalizedAssetName) -or $_.content -icontains $a.name -or $normalizedAssetName -ieq (_Normalize-AssetName $_.name) }
                 $mentionedAssets += _Get-AssetsMentionedInTexts -Assets $companyAssets -SourceAsset $a -Texts @($fieldValue)
             }       
-            $a.fields | Where-Object {$_.field_type -eq "Text"} | ForEach-Object {
+            $a.fields | Where-Object {$_.field_type -eq "Text"  -or $_.field_type -ieq "Link"  -or $_.field_type -ieq "ConfidentialText"  -or $_.field_type -ieq "Phone"  -or $_.field_type -ieq "Copyable Text"} | ForEach-Object {
                 $fieldValue = $_.value
                 foreach ($companyProcess in $companyProcesses){
                     if (
@@ -545,6 +598,15 @@ function Omni-Relate {
         $nonAssetSources += $companyNetworks | ForEach-Object { [pscustomobject]@{ type = 'Network'; item = $_ } }
         $nonAssetSources += $companyAddresses | ForEach-Object { [pscustomobject]@{ type = 'IPAddress'; item = $_ } }
 
+        $relationTargets = @()
+        $relationTargets += $companyAssets | ForEach-Object { [pscustomobject]@{ type = 'Asset'; label = 'asset'; item = $_ } }
+        $relationTargets += $companywebsites | ForEach-Object { [pscustomobject]@{ type = 'Website'; label = 'website'; item = $_ } }
+        $relationTargets += $companyArticles | ForEach-Object { [pscustomobject]@{ type = 'Article'; label = 'article'; item = $_ } }
+        $relationTargets += $companyProcesses | ForEach-Object { [pscustomobject]@{ type = 'Procedure'; label = 'procedure'; item = $_ } }
+        $relationTargets += $companypasswords | ForEach-Object { [pscustomobject]@{ type = 'AssetPassword'; label = 'password'; item = $_ } }
+        $relationTargets += $companyNetworks | ForEach-Object { [pscustomobject]@{ type = 'Network'; label = 'network'; item = $_ } }
+        $relationTargets += $companyAddresses | ForEach-Object { [pscustomobject]@{ type = 'IPAddress'; label = 'address'; item = $_ } }
+
         foreach ($source in $nonAssetSources) {
             $sourceTexts = @(_Get-NonAssetSearchTexts -Type $source.type -Item $source.item -PasswordFolders $companypasswordfolders)
             if (-not $sourceTexts -or $sourceTexts.Count -eq 0) { continue }
@@ -554,15 +616,17 @@ function Omni-Relate {
                 $sourceName = "$($source.type) $($source.item.id)"
             }
 
-            Write-Host "Processing $($source.type.ToLowerInvariant()) '$sourceName' ($($source.item.id)) for asset mentions"
+            Write-Host "Processing $($source.type.ToLowerInvariant()) '$sourceName' ($($source.item.id)) for relation mentions"
 
-            foreach ($asset in $companyAssets) {
-                $assetIdentifiers = @(_Get-AssetIdentifiers -Asset $asset)
-                if (-not $assetIdentifiers -or $assetIdentifiers.Count -eq 0) { continue }
+            foreach ($target in $relationTargets) {
+                if ($source.type -eq $target.type -and [string]$source.item.id -eq [string]$target.item.id) { continue }
+
+                $targetIdentifiers = @(_Get-RelationTargetIdentifiers -Type $target.type -Item $target.item -PasswordFolders $companypasswordfolders)
+                if (-not $targetIdentifiers -or $targetIdentifiers.Count -eq 0) { continue }
 
                 $matched = $false
-                foreach ($assetIdentifier in $assetIdentifiers) {
-                    if (_Test-TextsContainNeedle -Texts $sourceTexts -Needle $assetIdentifier) {
+                foreach ($targetIdentifier in $targetIdentifiers) {
+                    if (_Test-TextsContainNeedle -Texts $sourceTexts -Needle $targetIdentifier) {
                         $matched = $true
                         break
                     }
@@ -570,7 +634,7 @@ function Omni-Relate {
 
                 if (-not $matched) { continue }
 
-                _New-TrackedRelation -CompanyName $c.name -FromType $source.type -FromId $source.item.id -FromName $sourceName -ToType "Asset" -ToId $asset.id -ToName $asset.name -RelationLabel "asset" -SeenRelations $companySeenRelations -DryRun:$dryRun
+                _New-TrackedRelation -CompanyName $c.name -FromType $source.type -FromId $source.item.id -FromName $sourceName -ToType $target.type -ToId $target.item.id -ToName $target.item.name -RelationLabel $target.label -SeenRelations $companySeenRelations -DryRun:$dryRun
             }
         }
     }
