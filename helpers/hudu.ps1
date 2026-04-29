@@ -180,6 +180,40 @@ function Omni-Relate {
         return @($identifiers)
     }
 
+    function _Get-AssetsMentionedInTexts {
+        param(
+            [object[]]$Assets,
+            $SourceAsset,
+            [string[]]$Texts
+        )
+
+        if (-not $Assets -or -not $Texts -or $Texts.Count -eq 0) { return @() }
+
+        $matchedAssets = [System.Collections.Generic.List[object]]::new()
+
+        foreach ($asset in @($Assets)) {
+            if ($null -eq $asset -or [string]$asset.id -eq [string]$SourceAsset.id) { continue }
+
+            $normalizedName = _Normalize-AssetName $asset.name
+            if ([string]::IsNullOrWhiteSpace($normalizedName) -or $normalizedName -ieq 'main' -or "$normalizedName".Length -le 5) {
+                continue
+            }
+
+            $identifiers = [System.Collections.Generic.List[string]]::new()
+            _Add-UniqueText -List $identifiers -Value $asset.name
+            _Add-UniqueText -List $identifiers -Value $normalizedName
+
+            foreach ($identifier in @($identifiers)) {
+                if (_Test-TextsContainNeedle -Texts $Texts -Needle $identifier -MinimumLength 6) {
+                    $null = $matchedAssets.Add($asset)
+                    break
+                }
+            }
+        }
+
+        return @($matchedAssets)
+    }
+
     function _Get-PasswordFolderName {
         param(
             $Password,
@@ -431,7 +465,7 @@ function Omni-Relate {
                 }                
                 $mentionedWebsites += $companywebsites | Where-Object { $fieldValue -icontains $normalizedAssetName -or $(_Normalize-AssetName $_.name) -ieq $normalizedAssetName -or $fieldValue -icontains $_.name -or $_.notes -icontains $normalizedAssetName -or $_.notes -icontains $a.name }
                 $mentionedArticles += $companyArticles | Where-Object { $_.content -and $_.content.Contains($normalizedAssetName) -or $_.content -icontains $a.name -or $normalizedAssetName -ieq (_Normalize-AssetName $_.name) }
-                $mentionedAssets += $companyAssets | Where-Object { $fieldValue -and $fieldValue.Contains($normalizedAssetName) -or $fieldValue.Contains($a.name) }
+                $mentionedAssets += _Get-AssetsMentionedInTexts -Assets $companyAssets -SourceAsset $a -Texts @($fieldValue)
             }       
             $a.fields | Where-Object {$_.field_type -eq "Text"} | ForEach-Object {
                 $fieldValue = $_.value
@@ -471,6 +505,7 @@ function Omni-Relate {
 
                 $mentionedArticles += $companyArticles | Where-Object { $($fieldValue) -ieq $_.name -or $_.content -and $_.content.Contains($fieldValue) }
                 $mentionedWebsites += $companywebsites | Where-Object { $($fieldValue) -ieq $_.name -or $(_Normalize-WebsiteURL $_.name) -ieq $fieldValue -or $_.notes -icontains $fieldValue -or $_.notes -icontains $a.name }
+                $mentionedAssets += _Get-AssetsMentionedInTexts -Assets $companyAssets -SourceAsset $a -Texts @($fieldValue)
             }
     
             # "siblings": other assets with same normalized name but different id

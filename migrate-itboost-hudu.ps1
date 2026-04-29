@@ -50,6 +50,8 @@ $ITBoostData=@{
     CompletedJobs=@()
     ErrorsEncountered=@()
 }
+write-host "sleeping 21600 seconds"
+start-sleep -seconds 21600
 
 foreach ($job in @(
 "read-csvs",
@@ -58,13 +60,13 @@ foreach ($job in @(
 # "locations",
 # "contacts",
 # "websites",
-"configs",
-"expand-configs"
-# "passwords",
+# "configs",
+# "expand-configs"
+"passwords",
 # "documents",
-# "runbooks",
+# "runbooks"
 # "standalone-notes",
-# "gallery"
+"gallery"
 )){
     $ITBoostData.JobState = @{Status="$job"; StartedAt=$(Get-Date); FinishedAt=$null}
     write-host "Starting $($ITBoostdata.JobState.Status) at $($ITBoostdata.JobState.StartedAt)"
@@ -87,5 +89,5 @@ foreach ($job in @(
 #     Write-Host "$($ITBoostData.JobState.Status) Completed"; $ITBoostData.CompletedJobs+=$ITBoostData.JobState;
 # }
 # Write-Host "Wrapping Up"
-# . .\jobs\wrap-up.ps1
-# . .\jobs\relate-all.ps1
+. .\jobs\wrap-up.ps1
+. .\jobs\relate-all.ps1
