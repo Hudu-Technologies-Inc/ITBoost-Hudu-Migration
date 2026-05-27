@@ -50,8 +50,6 @@ $ITBoostData=@{
     CompletedJobs=@()
     ErrorsEncountered=@()
 }
-write-host "sleeping 21600 seconds"
-start-sleep -seconds 21600
 
 foreach ($job in @(
 "read-csvs",
