@@ -27,7 +27,7 @@ foreach ($file in $(Get-ChildItem -Path ".\helpers" -Filter "*.ps1" -File | Sort
     . $file.FullName
 }
 foreach ($requiredpath in @($TMPbasedir, $debug_folder)){Get-EnsuredPath -path $requiredpath}
-Get-PSVersionCompatible; Set-HuduModuleInitialized;
+Get-PSVersionCompatible; Set-HuduModuleInitialized -HuduBaseURL $HuduBaseURL -HuduAPIKey $HuduAPIKey;
 
 if ($null -eq $UseSimpleMap){$UseSimpleMap = $true}
 $mergeOnMatch = $mergeOnMatch ?? $("yes" -eq $(Select-Objectfromlist -objects @("yes","no") -message "When matches are found, do you want to merge data from ITBoost into Hudu (yes) or skip asset and keep existing Hudu data (no)?"))

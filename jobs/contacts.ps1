@@ -1,7 +1,6 @@
 
 $ContactsMap = @{
 primary_email = "Email Address"
-contact_type="Contact Type"
 primary_phone = "Office Phone number (DID)"
 title = "Title"
 id = "ITBID"
