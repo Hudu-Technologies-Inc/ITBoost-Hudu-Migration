@@ -61,7 +61,7 @@ foreach ($job in @(
 "contacts",
 "websites",
 "configs",
-"expand-configs"
+"expand-configs",
 "passwords",
 "documents",
 "runbooks",
