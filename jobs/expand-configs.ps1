@@ -76,7 +76,10 @@ $FieldsAsArrays = @(
 # load companies index if available
 $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
 
-if ($ITBoostData.ContainsKey("configurations")){
+if ($ITBoostData.ContainsKey("configurations") -and $ITBoostData.configurations.CSVData){
+    if (-not $ITBoostData.configurations.ContainsKey('matches')) { $ITBoostData.configurations['matches'] = @() }
+    $ITBoostData.configurations['matches'] = @($ITBoostData.configurations['matches'] ?? @())
+
     $namesSeen = @()   
     $huduCompanies = $huduCompanies ?? $(get-huducompanies)
     $configsLayout = get-huduassetlayouts | Where-Object { ($(Get-NeedlePresentInHaystack -needle "config" -haystack $_.name) -or $($_.name -ilike "config*")) } | Select-Object -First 1; $configsLayout = $configsLayout.asset_layout ?? $configsLayout;

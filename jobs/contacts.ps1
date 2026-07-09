@@ -75,7 +75,9 @@ function Build-HuduContactIndex {
 
 # load companies index if available
 $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
+if (-not $ITBoostData.ContainsKey("contacts") -or -not $ITBoostData.contacts.CSVData){write-host "no contacts in CSV! skipping."; return}
 if (-not $ITBoostData.contacts.ContainsKey('matches')) { $ITBoostData.contacts['matches'] = @() }
+$ITBoostData.contacts['matches'] = @($ITBoostData.contacts['matches'] ?? @())
 
 $contactsLayout = $(get-huduassetlayouts) | Where-Object { $_.name -ieq "people" -or $_.name -ieq "contacts" } | Select-Object -First 1
 if (-not $contactsLayout){

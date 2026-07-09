@@ -86,8 +86,9 @@ if ($allowConvert -eq $true){
 # load companies index if available
 $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
 
-if (-not $ITBoostData.ContainsKey("documents")){write-host "no documents recorded in ITBoost data, skipping"; return}
+if (-not $ITBoostData.ContainsKey("documents") -or -not $ITBoostData.documents.CSVData){write-host "no documents recorded in ITBoost data, skipping"; return}
 if (-not $ITBoostData.documents.ContainsKey('matches')) { $ITBoostData.documents['matches'] = @() }
+$ITBoostData.documents['matches'] = @($ITBoostData.documents['matches'] ?? @())
 
 $groupeddocuments = $ITBoostData.documents.CSVData | Group-Object { $_.organization } -AsHashTable -AsString
 try {
@@ -110,9 +111,6 @@ $docToFolder = foreach ($row in $ITBoostData.documents.CSVData) {
     }
 }
 Write-Host "unresolved folders? $($docToFolder | Sort-Object { -not $_.folder }, @{e='confidence';d=$true} | Format-Table -AutoSize)"
-if (-not $ITBoostData.documents.ContainsKey('matches')) { $ITBoostData.documents['matches'] = @() }
-
-
 foreach ($company in $groupeddocuments.Keys) {
     $documentsForCompany = $groupeddocuments[$company]
     write-host "starting $company with $($documentsForCompany.count) docs"
@@ -328,7 +326,7 @@ foreach ($company in $groupeddocuments.Keys) {
 }
 write-host "Updating global images in matched documents"
 $globalReplacements = @()
-$ITBoostData.documents.Matches.HuduObject | foreach-object {
+($ITBoostData.documents["matches"] ?? @()) | foreach-object {
     if ($globalreplacements -contains $_.id){write-host "Already processed global images for document ID $($_.id), skipping"; continue}
     $globalUpdateResult = $null
     $globalUpdateResult = Replace-GlobalImages -RawHtml $_.content -ArticleId $_.id -ITBoostExportPath $ITBoostExportPath
@@ -344,5 +342,6 @@ $ITBoostData.documents.Matches.HuduObject | foreach-object {
     }
 }
 
-$globalReplacements | convertto-json -depth 99 | Out-File -FilePath (Join-Path $debug_folder "globalImageReplacements.log") -Force
-$ITBoostData.documents["matches"] | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "MatchedDocuments.json")) -Force
+($globalReplacements ?? @()) | convertto-json -depth 99 | Out-File -FilePath (Join-Path $debug_folder "globalImageReplacements.log") -Force
+($ITBoostData.documents["matches"] ?? @()) | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "MatchedDocuments.json")) -Force
+    
