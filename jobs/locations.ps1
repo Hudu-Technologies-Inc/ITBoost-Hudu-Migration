@@ -23,8 +23,9 @@ $huduCompanies = $huduCompanies ?? $(get-huducompanies)
 # load companies index if available
 $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
 
-if ($ITBoostData.ContainsKey("locations")){
+if ($ITBoostData.ContainsKey("locations") -and $ITBoostData.locations.CSVData){
     if (-not $ITBoostData.locations.ContainsKey('matches')) { $ITBoostData.locations['matches'] = @() }
+    $ITBoostData.locations['matches'] = @($ITBoostData.locations['matches'] ?? @())
 
     $LocationLayout = Get-HuduAssetLayouts | Where-Object { $_.name -ieq "location" -or $_.name -ieq "locations" } | Select-Object -First 1; $LocationLayout = $LocationLayout.asset_layout ?? $LocationLayout;
 
@@ -155,7 +156,7 @@ if ($ITBoostData.ContainsKey("locations")){
         }
         
     }
-} else {write-host "no locations in CSV! skipping."}
+} else {write-host "no locations in CSV! skipping."; return}
     $allHuduLocations = Get-HuduAssets -AssetLayoutId $LocationLayout.id
 
 $ITBoostData.locations["matches"] | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "MatchedLocations.json")) -Force

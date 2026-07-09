@@ -125,5 +125,5 @@ foreach ($p in $(get-hudupasswords)){
     if ($desc -ne $descupdated -and -not ([string]::IsNullOrWhiteSpace(($descupdated) -and $pass.id -ne $null))){Set-HuduPassword -id $pass.id -CompanyId $pass.company_id -Description "$descupdated"} else {write-host "Skipping description on pass - no change for $($pass.id)"; continue;}
 
 }
-$passwordsFromEmbedded | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "PasswordsFromEmbeds.json")) -Force
-$ITBoostData.passwords["matches"] | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "MatchedPasswords.json")) -Force
+$($passwordsFromEmbedded ?? @()) | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "PasswordsFromEmbeds.json")) -Force
+($ITBoostData.passwords["matches"] ?? @()) | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "MatchedPasswords.json")) -Force

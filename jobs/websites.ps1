@@ -73,56 +73,62 @@ if ($ITBoostData.ContainsKey("domains")){
 $allHuduWebsites=Get-HuduWebsites
 $allHuduWebsites | Foreach-Object {write-host "Enabling advanced monitoring features for $($(Set-HuduWebsite -id $_.id -EnableDMARC 'true' -EnableDKIM 'true' -EnableSPF 'true' -DisableDNS 'false' -DisableSSL 'false' -DisableWhois 'false' -Paused 'false').name)" -ForegroundColor DarkCyan}
 
-if ($itboostdata.ContainsKey('ssl-certificates')){
+if ($itboostdata.ContainsKey('ssl-certificates') -and $ITBoostData.'ssl-certificates'.CSVData){
     if (-not $ITBoostData.'ssl-certificates'.ContainsKey('matches')) { $ITBoostData.'ssl-certificates'['matches'] = @() }
-}
+    $ITBoostData.'ssl-certificates'['matches'] = @($ITBoostData.'ssl-certificates'['matches'] ?? @())
 
-$ITBoostData.'ssl-certificates'.CSVData | ForEach-Object {
-    $company = $null
-    if ([string]::IsNullOrEmpty($_.organization)) {
-        $company = Get-HuduCompanies -id $internalCompanyId; $company = $company.company ?? $company;
-    } else {
-        $company = Get-HuduCompanies -name $_.organization; $company = $company.company ?? $company;
-    }
-    $ws = $null
-    $existing = get-huduwebsites -name "https://$($_.host)" | where-object { $_.company_id -eq $company.id } | Select-Object -first 1
-    if ($existing) {
-        Write-Host "Found existing website $($existing.name) for SSL cert $($_.host)"x
-        $existing = $existing.website ?? $existing
-        $itboostdata.'ssl-certificates'['matches']+=@{
-            CompanyName=$_.organization
-            CsvRow=$_.CsvRow
-            ITBID=$_.id
-            Name=$existing.name
-            HuduID=$existing.id
-            HuduObject=$existing
-            HuduCompanyId=$existing.company_id
+    $ITBoostData.'ssl-certificates'.CSVData | ForEach-Object {
+        $company = $null
+        if ([string]::IsNullOrEmpty($_.organization)) {
+            $company = Get-HuduCompanies -id $internalCompanyId; $company = $company.company ?? $company;
+        } else {
+            $company = Get-HuduCompanies -name $_.organization; $company = $company.company ?? $company;
         }
-        continue
-    }
-    $ws = New-HuduWebsite -Name "https://$($_.host)" -CompanyId $company.id ?? $internalCompanyId -Notes "From ITBoost -SSL"
-    if ($ws) {
+        $ws = $null
+        $existing = get-huduwebsites -name "https://$($_.host)" | where-object { $_.company_id -eq $company.id } | Select-Object -first 1
+        if ($existing) {
+            Write-Host "Found existing website $($existing.name) for SSL cert $($_.host)"
+            $existing = $existing.website ?? $existing
+            $itboostdata.'ssl-certificates'['matches']+=@{
+                CompanyName=$_.organization
+                CsvRow=$_.CsvRow
+                ITBID=$_.id
+                Name=$existing.name
+                HuduID=$existing.id
+                HuduObject=$existing
+                HuduCompanyId=$existing.company_id
+            }
+            continue
+        }
+        $ws = New-HuduWebsite -Name "https://$($_.host)" -CompanyId ($company.id ?? $internalCompanyId) -Notes "From ITBoost -SSL"
+        if ($ws) {
             Write-Host "Created website $($ws.name) for SSL cert $($_.host)"
-        $ws = $ws.website ?? $ws
-        $itboostdata.'ssl-certificates'['matches']+=@{
-            CompanyName=$_.organization
-            CsvRow=$_.CsvRow
-            ITBID=$_.id
-            Name=$ws.name
-            HuduID=$ws.id
-            HuduObject=$ws
-            HuduCompanyId=$ws.company_id
-        }
-
-
-    } else {
+            $ws = $ws.website ?? $ws
+            $itboostdata.'ssl-certificates'['matches']+=@{
+                CompanyName=$_.organization
+                CsvRow=$_.CsvRow
+                ITBID=$_.id
+                Name=$ws.name
+                HuduID=$ws.id
+                HuduObject=$ws
+                HuduCompanyId=$ws.company_id
+            }
+        } else {
             Write-Host "Error creating website for SSL cert $($_.host)"
-
+        }
     }
-
-
+} else {
+    write-host "no SSL certificates in CSV! skipping."
 }
 
 
-$ITBoostData.domains["matches"] | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "Matched-websites.json")) -Force
-$ITBoostData.'ssl-certificates'["matches"] | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "Matched-ssl.json")) -Force
+$domainMatches = @()
+if ($ITBoostData.ContainsKey('domains')){
+    $domainMatches = @($ITBoostData.domains["matches"] ?? @())
+}
+ConvertTo-Json -InputObject $($domainMatches ?? @()) -Depth 99 | out-file $($(join-path $debug_folder -ChildPath "Matched-websites.json")) -Force
+$sslCertificateMatches = @()
+if ($ITBoostData.ContainsKey('ssl-certificates')){
+    $sslCertificateMatches = @($ITBoostData.'ssl-certificates'["matches"] ?? @())
+}
+ConvertTo-Json -InputObject $($sslCertificateMatches ?? @()) -Depth 99 | out-file $($(join-path $debug_folder -ChildPath "Matched-ssl.json")) -Force

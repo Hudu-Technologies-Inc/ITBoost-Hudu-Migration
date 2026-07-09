@@ -59,8 +59,9 @@ $OverviewField = $configsLayout.fields | where-object {$_.label -eq $ConfigsRich
 # load companies index if available
 $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
 
-if ($ITBoostData.ContainsKey("configurations")){
+if ($ITBoostData.ContainsKey("configurations") -and $ITBoostData.configurations.CSVData){
     if (-not $ITBoostData.configurations.ContainsKey('matches')) { $ITBoostData.configurations['matches'] = @() }
+    $ITBoostData.configurations['matches'] = @($ITBoostData.configurations['matches'] ?? @())
     $huduCompanies = $huduCompanies ?? $(get-huducompanies)
 
     $configsLayout = get-huduassetlayouts | Where-Object { $_.name -ieq "configs" } | Select-Object -First 1; $configsLayout = $configsLayout.asset_layout ?? $configsLayout;
@@ -210,7 +211,7 @@ foreach ($company in $uniqueCompanies) {
     $ConfigurationsHaveBeenApplied=$true
 }
 
-}
+} else {write-host "no configurations in CSV! skipping."; return}
 $allHuduConfigs = Get-HuduAssets -AssetLayoutId $configsLayout.id
 
-$ITBoostData.configurations["matches"] | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "MatchedConfigurations.json")) -Force
+$($ITBoostData.configurations["matches"] ?? @()) | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "MatchedConfigurations.json")) -Force
