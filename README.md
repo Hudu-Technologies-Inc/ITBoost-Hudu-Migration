@@ -8,7 +8,7 @@ Easy Migration from ITBoost to Hudu
 
 ### Prerequisites
 
-- Hudu Instance of 2.39.6 or newer
+- Hudu Instance of 2.43.1 or newer
 - Hudu API Key
 - ITBoost Export
 - Powershell 7.5.1 or later on Windows PC
