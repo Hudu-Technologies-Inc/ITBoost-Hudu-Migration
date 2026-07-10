@@ -121,7 +121,7 @@ if (-not $contactsLayout){write-host "Could not find or create contacts layout, 
 $allHuduContacts = Get-HuduAssets -AssetLayoutId $contactsLayout.id
 $allHuduLocations = Get-HuduAssets -AssetLayoutId $LocationLayout.id
 $contactsFields = $contactsLayout.fields
-$groupedContacts = $ITBoostData.contacts.CSVData | Group-Object { $_.organization } -AsHashTable -AsString
+$groupedContacts = $ITBoostData.contacts.CSVData | Group-ObjectSafeHashTable { $_.organization } -BlankKey "$internalCompanyName"
 try {
     $allHuduContacts = Get-HuduAssets -AssetLayoutId $contactsLayout.id
 } catch {

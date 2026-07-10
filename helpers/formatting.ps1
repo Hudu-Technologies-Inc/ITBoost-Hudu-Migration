@@ -160,6 +160,52 @@ function Convert-FieldArrayToMap {
     return $map
 }
 
+function ConvertTo-SafeGroupKey {
+    param(
+        $Value,
+        [string]$BlankKey = "Unassigned"
+    )
+
+    if ($null -eq $Value) { return $BlankKey }
+
+    $key = "$Value"
+    if ([string]::IsNullOrWhiteSpace($key)) { return $BlankKey }
+
+    return $key.Trim()
+}
+
+function Group-ObjectSafeHashTable {
+    [CmdletBinding()]
+    param(
+        [Parameter(ValueFromPipeline)]
+        $InputObject,
+
+        [Parameter(Mandatory, Position = 0)]
+        [scriptblock]$Property,
+
+        [string]$BlankKey = "Unassigned"
+    )
+
+    begin {
+        $groups = [hashtable]::new([StringComparer]::OrdinalIgnoreCase)
+    }
+
+    process {
+        $rawKey = & $Property
+        $key = ConvertTo-SafeGroupKey -Value $rawKey -BlankKey $BlankKey
+
+        if (-not $groups.ContainsKey($key)) {
+            $groups[$key] = [Collections.Generic.List[object]]::new()
+        }
+
+        $groups[$key].Add($InputObject)
+    }
+
+    end {
+        return $groups
+    }
+}
+
 function Merge-FieldMaps {
     param(
         [Parameter(Mandatory)][hashtable]$TransformedMap,
