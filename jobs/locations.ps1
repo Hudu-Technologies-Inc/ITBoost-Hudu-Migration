@@ -50,7 +50,7 @@ if ($ITBoostData.ContainsKey("locations") -and $ITBoostData.locations.CSVData){
     if ($null -ne $AddressDataField){
         write-host "Meta-Mapping AddressData field from CSV for locations: $AddressDataField"
     }
-    $groupedLocations = $ITBoostData.locations.CSVData | Group-ObjectSafeHashTable { $_.organization }
+    $groupedLocations = $ITBoostData.locations.CSVData | Group-ObjectSafeHashTable { $_.organization } -BlankKey "$internalCompanyName"
     
     $allHuduLocations = Get-HuduAssets -AssetLayoutId $LocationLayout.id
     
