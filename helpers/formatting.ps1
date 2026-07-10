@@ -163,7 +163,7 @@ function Convert-FieldArrayToMap {
 function ConvertTo-SafeGroupKey {
     param(
         $Value,
-        [string]$BlankKey = ""
+        [string]$BlankKey = "Unassigned"
     )
 
     if ($null -eq $Value) { return $BlankKey }
@@ -183,7 +183,7 @@ function Group-ObjectSafeHashTable {
         [Parameter(Mandatory, Position = 0)]
         [scriptblock]$Property,
 
-        [string]$BlankKey = ""
+        [string]$BlankKey = "Unassigned"
     )
 
     begin {
