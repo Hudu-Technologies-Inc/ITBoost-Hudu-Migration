@@ -90,7 +90,7 @@ if (-not $ITBoostData.ContainsKey("documents") -or -not $ITBoostData.documents.C
 if (-not $ITBoostData.documents.ContainsKey('matches')) { $ITBoostData.documents['matches'] = @() }
 $ITBoostData.documents['matches'] = @($ITBoostData.documents['matches'] ?? @())
 
-$groupeddocuments = $ITBoostData.documents.CSVData | Group-Object { $_.organization } -AsHashTable -AsString
+$groupeddocuments = $ITBoostData.documents.CSVData | Group-ObjectSafeHashTable { $_.organization }
 try {
     $allHududocuments = Get-HuduArticles
 } catch {

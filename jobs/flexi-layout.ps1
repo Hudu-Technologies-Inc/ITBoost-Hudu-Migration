@@ -100,7 +100,7 @@ foreach ($listField in $ListFields){
 $SmooshFieldIsRichTExt = [bool]$(($flexisFields | Where-Object { $_.label -eq $($smooshToDestinationLabel) } | Select-Object -First 1).field_type -ieq "RichText") ?? $true
 Write-Host "Smooshable dest is $(if ($true -eq $SmooshFieldIsRichTExt) {"RichText"} else {"Text"})"
 
-$groupedflexis = $ITBoostData.$sourceProperty.CSVData | Group-Object { $_.organization } -AsHashTable -AsString
+$groupedflexis = $ITBoostData.$sourceProperty.CSVData | Group-ObjectSafeHashTable { $_.organization }
 
 try {
     $allHuduflexis = Get-HuduAssets -AssetLayoutId $flexisLayout.id

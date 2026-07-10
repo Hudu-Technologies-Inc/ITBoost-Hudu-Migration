@@ -10,7 +10,7 @@ $PassProps = @{
 $ITBoostData.organizations["matches"] = $ITBoostData.organizations["matches"] ?? $(get-content $companiesIndex -Raw | convertfrom-json -depth 99) ?? @()
 
 if ($ITBoostData.ContainsKey("passwords")) {
-  $passwords = $ITBoostData.passwords.CSVData | Group-Object { $_.organization } -AsHashTable -AsString
+  $passwords = $ITBoostData.passwords.CSVData | Group-ObjectSafeHashTable { $_.organization }
   if (-not $ITBoostData.passwords.ContainsKey('matches')) { $ITBoostData.passwords['matches'] = @() }
 
   try { $null = Get-HuduPasswords } catch { } # warm the pipe
