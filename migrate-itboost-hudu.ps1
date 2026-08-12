@@ -9,7 +9,7 @@ $toolsPath = resolve-path .\tools\
 $project_workdir=$PSScriptRoot
 $debug_folder=$debug_folder ?? $(join-path "$project_workdir" "debug")
 $companiesIndex =  $(join-path $debug_folder -ChildPath "MatchedCompanies.json")
-
+try {$migrationRecord = Set-MigrationRecord} catch {}
 $UseSimpleMap = $true
 $SkipInactive = $SkipInactive ?? $true
 $ConfigExpansionMethod = "ALL"
