@@ -28,7 +28,7 @@ foreach ($file in $(Get-ChildItem -Path ".\helpers" -Filter "*.ps1" -File | Sort
 }
 foreach ($requiredpath in @($TMPbasedir, $debug_folder)){Get-EnsuredPath -path $requiredpath}
 Get-PSVersionCompatible; Set-HuduModuleInitialized -HuduBaseURL $HuduBaseURL -HuduAPIKey $HuduAPIKey;
-
+$currentVersionResult = [version]$((get-huduappinfo).version); $DisallowedVersions = @([version]("2.37.0"), [version]("2.44.3")); if ($DisallowedVersions -contains [version]($currentVersionResult)) {write-host "disallowed version $($currentVersionResult); Please upgrade or downgrade if possible first." -ForegroundColor Red; exit 1;} else {write-host "$($currentVersionResult) is allowed!" -ForegroundColor Green};
 if ($null -eq $UseSimpleMap){$UseSimpleMap = $true}
 $mergeOnMatch = $mergeOnMatch ?? $("yes" -eq $(Select-Objectfromlist -objects @("yes","no") -message "When matches are found, do you want to merge data from ITBoost into Hudu (yes) or skip asset and keep existing Hudu data (no)?"))
 $skipInactive = $skipInactive ?? $("yes" -eq $(Select-Objectfromlist -objects @("yes","no") -message "When inactive assets are found, do you want to skip them (yes) or include them (no)?"))
