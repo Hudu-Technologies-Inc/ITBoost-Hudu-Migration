@@ -31,3 +31,6 @@ write-host "Cannot find or create internal company, please rerun and specify int
 exit 1
 }
 write-host "using internal company $internalCompanyId for internal attributions"
+$kbsEnabled = Get-HuduFeatureAvailability -Core_Feature articles
+$assetsEnabled = Get-HuduFeatureAvailability -Core_Feature assets
+$ipamenabled = Get-HuduFeatureAvailability -Core_Feature ipaddress

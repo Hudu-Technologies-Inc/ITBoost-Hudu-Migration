@@ -5,6 +5,21 @@ if ($MyInvocation.InvocationName -eq '.') {
     Write-Host "Script was executed without dot-sourcing, this is the recommended method of running the script to ensure settings are retained in the session" -ForegroundColor Yellow; write-warning "exiting to prevent issues later on, please dot-source the script by running `. .\yourenvironmentfile.ps1` or `. .\migrate-itboost-hudu.ps1` from powershell 7.5 or later (ideally as Administrator)" -ForegroundColor Red;
     exit 1
 }
+$availableJobs = @(
+"read-csvs",
+"companies",
+"locations",
+"contacts",
+"websites",
+"configs",
+"expand-configs",
+"passwords",
+"documents",
+"runbooks",
+"standalone-notes",
+"gallery"
+)
+
 $toolsPath = resolve-path .\tools\
 $project_workdir=$PSScriptRoot
 $debug_folder=$debug_folder ?? $(join-path "$project_workdir" "debug")
@@ -28,13 +43,23 @@ foreach ($file in $(Get-ChildItem -Path ".\helpers" -Filter "*.ps1" -File | Sort
 }
 foreach ($requiredpath in @($TMPbasedir, $debug_folder)){Get-EnsuredPath -path $requiredpath}
 Get-PSVersionCompatible; Set-HuduModuleInitialized -HuduBaseURL $HuduBaseURL -HuduAPIKey $HuduAPIKey;
-$currentVersionResult = $($currentVersionResult ?? $([version]((get-huduappinfo).version))); $MinAllowedVersion = ([version]"2.45.0"); $DisallowedVersions = @([version]("2.37.0")); if ($currentVersionResult -lt $MinAllowedVersion){Write-Host "Sorry, your Hudu version $currentVersionResult is not supported. You'll need to upgrade to $($MinAllowedVersion) in order to continue."; exit 1;}; if ($DisallowedVersions -contains [version]($currentVersionResult)) {write-host "disallowed version $($currentVersionResult); Please upgrade or downgrade if possible first." -ForegroundColor Red; exit 1;};
+$currentVersionResult = $($currentVersionResult ?? $([version]((get-huduappinfo).version))); $MinAllowedVersion = ([version]"2.46.0"); $DisallowedVersions = @([version]("2.37.0")); if ($currentVersionResult -lt $MinAllowedVersion){Write-Host "Sorry, your Hudu version $currentVersionResult is not supported. You'll need to upgrade to $($MinAllowedVersion) in order to continue."; exit 1;}; if ($DisallowedVersions -contains [version]($currentVersionResult)) {write-host "disallowed version $($currentVersionResult); Please upgrade or downgrade if possible first." -ForegroundColor Red; exit 1;};
 if ($null -eq $UseSimpleMap){$UseSimpleMap = $true}
 $mergeOnMatch = $mergeOnMatch ?? $("yes" -eq $(Select-Objectfromlist -objects @("yes","no") -message "When matches are found, do you want to merge data from ITBoost into Hudu (yes) or skip asset and keep existing Hudu data (no)?"))
 $skipInactive = $skipInactive ?? $("yes" -eq $(Select-Objectfromlist -objects @("yes","no") -message "When inactive assets are found, do you want to skip them (yes) or include them (no)?"))
 if ($true -eq $mergeOnMatch){$preferOrginal = $preferOrginal ?? $(select-objectfromlist -objects @("ITBoost","Hudu") -message "When merging on match, which data source do you want to prefer for field values?")} else {$preferOrginal = $true}
-
 $skiponmatch = (-not $mergeOnMatch)
+
+
+. .\jobs\get-hududata.ps1
+
+if ($null -eq $kbsEnabled -or $false -eq $kbsEnabled.CompanyKB -or $false -eq $kbsEnabled.CentralKB) {
+    write-warning "in order to proceed, you need to enable both the CompanyKB and CentralKB features in Hudu."; exit 1;
+}
+if ($null -eq $assetsEnabled -or $false -eq $assetsEnabled) {
+    write-warning "in order to proceed, you need to enable the Assets feature in Hudu."; exit 1;    
+}
+
 
 write-host @"
 Merging on Match is set to: $mergeOnMatch
@@ -51,21 +76,9 @@ $ITBoostData=@{
     ErrorsEncountered=@()
 }
 
-foreach ($job in @(
-"read-csvs",
-"get-hududata",
-"companies",
-"locations",
-"contacts",
-"websites",
-"configs",
-"expand-configs",
-"passwords",
-"documents",
-"runbooks",
-"standalone-notes",
-"gallery"
-)){
+$jobsToRun = $availableJobs
+
+foreach ($job in $jobsToRun){
     $ITBoostData.JobState = @{Status="$job"; StartedAt=$(Get-Date); FinishedAt=$null}
     write-host "Starting $($ITBoostdata.JobState.Status) at $($ITBoostdata.JobState.StartedAt)"
     . ".\jobs\$job.ps1"
@@ -77,7 +90,7 @@ $flexIdx = 0
 while ($false -eq $flexiLayoutsCompleted){
     $flexIdx++
     write-host "Starting flexible asset layouts round ($flexIdx) (optional, but reccomended)"
-    $ITBoostData.JobState = @{Status="flexi-round-$idx"; StartedAt=$(Get-Date); FinishedAt=$null}
+    $ITBoostData.JobState = @{Status="flexi-round-$flexIdx"; StartedAt=$(Get-Date); FinishedAt=$null}
     if ("yes" -ieq $(select-objectfromlist -objects @("yes","No") -message "do you wish to process flexible layouts round-$flexIdx now? (select 1/yes or 2/no)")){
         . .\jobs\flexi-layout.ps1
     } else {
