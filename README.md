@@ -30,6 +30,9 @@ The default configurations csv is invalid. You'll need to replace the 2nd column
 You'll need to add an API key that has full access, if possible. copy it to clipboard for later or add it to your environment file.
 Other than that, it's best to start fresh. You can custom-map fields in the same way that you map fields which are templated to custom layouts, but it's generally easier if you start fresh.
 
+Also, ensure that IPAM, Company and Centralkb articles, as well as asset core features are enabled in Hudu. These items are required.
+<img width="2322" height="2338" alt="image" src="https://github.com/user-attachments/assets/f678a6c4-6762-447c-ac2a-fdefd82e9e9a" />
+
 ### Environment File
 
 Make your own copy of the environ.example template (as .ps1 file) and record the following items:
