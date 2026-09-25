@@ -23,7 +23,9 @@ Easy Migration from ITBoost to Hudu
 ## Getting Started
 
 You'll need just a few items to start
-The default configurations csv is invalid. You'll need to replace the 2nd column named 'model' to 'modelo' first, using excel or libreoffice
+The default configurations csv is invalid. You'll need to replace the 2nd column named 'model' to 'modelo' first, using excel or libreoffice.
+
+Also, you might notice that there may be some CSVs that do not load properly as a result of having duplicate headers/column names. Passwords is a common name that is duplicated among special asset types and may need to have one column renamed as well.
 
 ### Setup Hudu
 

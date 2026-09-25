@@ -1,12 +1,12 @@
-Write-Host "Fetching Hudu AssetLayouts fron $(Get-HuduBaseURL)"
+Write-Host "Fetching Hudu AssetLayouts from $(Get-HuduBaseURL)"
 $allHuduLayouts=Get-HuduAssetlayouts
-Write-Host "Fetching Hudu Companies fron $(Get-HuduBaseURL)"
+Write-Host "Fetching Hudu Companies from $(Get-HuduBaseURL)"
 $huduCompanies = Get-HuduCompanies
-Write-Host "Fetching Hudu Websites fron $(Get-HuduBaseURL)"
+Write-Host "Fetching Hudu Websites from $(Get-HuduBaseURL)"
 $allHuduWebsites=Get-HuduWebsites
 $allHuduLocations=@()
 $allHuduContacts=@()
-Write-Host "Fetching Hudu Passwords fron $(Get-HuduBaseURL)"
+Write-Host "Fetching Hudu Passwords from $(Get-HuduBaseURL)"
 $allHuduPasswords=Get-HuduPasswords
 $LocationLayout = $locationlayout ?? $(Get-HuduAssetLayouts | Where-Object { $_.name -ieq "location" -or $_.name -ieq "locations" } | Select-Object -First 1); $LocationLayout = $LocationLayout.asset_layout ?? $LocationLayout;
 
@@ -34,3 +34,9 @@ write-host "using internal company $internalCompanyId for internal attributions"
 $kbsEnabled = Get-HuduFeatureAvailability -Core_Feature articles
 $assetsEnabled = Get-HuduFeatureAvailability -Core_Feature assets
 $ipamenabled = Get-HuduFeatureAvailability -Core_Feature ipaddress
+write-host -ForegroundColor Cyan @"
+Knowledge of Hudu Feature Availability:
+Articles Enabled: $kbsEnabled
+Assets Enabled: $assetsEnabled
+IP Address Management Enabled: $ipamenabled
+"@

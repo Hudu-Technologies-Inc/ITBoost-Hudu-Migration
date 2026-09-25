@@ -35,6 +35,82 @@ function Get-DocumentHuduMediaUrl {
     return $url
 }
 
+function Convert-DocumentHuduUrlToRelative {
+    [CmdletBinding()]
+    param(
+        [AllowNull()][string]$Url,
+        [string]$HuduBaseUrl
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Url)) { return $Url }
+    $trimmedUrl = $Url.Trim()
+    if ($trimmedUrl.StartsWith('/')) { return $trimmedUrl }
+    if ($trimmedUrl -notmatch '^(?i)https?://') { return $trimmedUrl }
+
+    try {
+        $uri = [uri]$trimmedUrl
+    } catch {
+        return $trimmedUrl
+    }
+
+    $baseHosts = @()
+    foreach ($candidateBase in @($HuduBaseUrl, $script:Int_HuduBaseURL, $script:hudubaseurl, $hudubaseurl)) {
+        if ([string]::IsNullOrWhiteSpace([string]$candidateBase)) { continue }
+        try { $baseHosts += ([uri]$candidateBase).Host } catch {}
+    }
+    try {
+        if (Get-Command -Name Get-HuduBaseURL -ErrorAction SilentlyContinue) {
+            $moduleBaseUrl = Get-HuduBaseURL
+            if (-not [string]::IsNullOrWhiteSpace([string]$moduleBaseUrl)) {
+                $baseHosts += ([uri]$moduleBaseUrl).Host
+            }
+        }
+    } catch {}
+    $baseHosts = @($baseHosts | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique)
+
+    if ($baseHosts.Count -gt 0 -and $uri.Host -in $baseHosts) {
+        return $uri.PathAndQuery
+    }
+
+    return $trimmedUrl
+}
+
+function Add-DocumentArticleLinkKeys {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][hashtable]$Lookup,
+        [Parameter(Mandatory)]$Article,
+        $Row,
+        [string[]]$ExtraNames = @(),
+        [string]$HuduBaseUrl
+    )
+
+    $article = $Article.article ?? $Article
+    $url = Convert-DocumentHuduUrlToRelative -Url ($article.url ?? $article.Url) -HuduBaseUrl $HuduBaseUrl
+    if ([string]::IsNullOrWhiteSpace($url)) { return }
+
+    $names = @(
+        $article.name
+        $article.Name
+        $Row.name
+        $Row.locator
+        $Row.resource_id
+        $Row.id
+        $ExtraNames
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique
+
+    foreach ($name in $names) {
+        $text = [string]$name
+        $slug = ($text -replace '[^\p{L}\p{Nd}]+','-').Trim('-').ToLowerInvariant()
+        $underscore = $text -replace '\s+', '_'
+        foreach ($key in @($text, $slug, $underscore, "$text.html", "$text.htm", "$slug.html", "$slug.htm", "$underscore.html", "$underscore.htm")) {
+            if (-not [string]::IsNullOrWhiteSpace($key) -and -not $Lookup.ContainsKey($key)) {
+                $Lookup[$key] = $url
+            }
+        }
+    }
+}
+
 function New-DocumentImagePublicPhoto {
     [CmdletBinding()]
     param(
@@ -184,6 +260,10 @@ try {
 } catch {
     $allHududocuments=@()
 }
+$ArticleURLReplacement = @{}
+foreach ($existingArticle in @($allHududocuments)) {
+    Add-DocumentArticleLinkKeys -Lookup $ArticleURLReplacement -Article $existingArticle -HuduBaseUrl $HuduBaseURL
+}
 $rootDocs = Join-Path $ITBoostExportPath 'documents'
 $folderIndex = Build-DocFolderIndex -Root $rootDocs
 $docToFolder = foreach ($row in $ITBoostData.documents.CSVData) {
@@ -215,13 +295,61 @@ foreach ($company in $groupeddocuments.Keys) {
     if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { 
         $matchedcompany = $internalcompany
     }
+    $precreatedDocumentIds = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    if (-not ($DeleteDocsMode -and $true -eq $DeleteDocsMode)) {
+        foreach ($companydocument in $documentsForCompany) {
+            $stubFileMatch = Get-DocumentFilesForRow -Row $companydocument -RootDocs $RootDocs -FolderIndex $FolderIndex
+            $stubLinkNames = @()
+            if ($stubFileMatch -and $stubFileMatch.files) {
+                $stubLinkNames = @($stubFileMatch.files |
+                    Where-Object { (Get-ExtensionCategory $_) -eq 'Web' } |
+                    ForEach-Object { $_.Name; $_.BaseName } |
+                    Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
+                    Select-Object -Unique)
+            }
+
+            $stubMatchedDocument = $allHududocuments | Where-Object {
+                $_.company_id -eq $matchedCompany.id -and $(test-equiv -A $_.name -B $companydocument.name)
+            } | Select-Object -first 1
+
+            $stubMatchedDocument = $stubMatchedDocument ?? $($(Get-HuduArticles -CompanyId $matchedCompany.id -name $companydocument.name) | Select-Object -first 1)
+            if ($stubMatchedDocument) {
+                Add-DocumentArticleLinkKeys -Lookup $ArticleURLReplacement -Article $stubMatchedDocument -Row $companydocument -ExtraNames $stubLinkNames -HuduBaseUrl $HuduBaseURL
+                continue
+            }
+
+            if (-not $stubFileMatch -or -not $stubFileMatch.files -or $stubFileMatch.files.Count -eq 0) {
+                continue
+            }
+
+            $stubRequest = @{
+                Name = "$($companydocument.name)".Trim()
+                CompanyID = $matchedCompany.id
+                Content = "in-transit"
+            }
+
+            try {
+                $createdStub = New-HuduArticle @stubRequest
+                $createdStub = $createdStub.article ?? $createdStub
+                if ($createdStub -and $createdStub.id) {
+                    [void]$precreatedDocumentIds.Add([string]$createdStub.id)
+                    $allHududocuments += $createdStub
+                    Add-DocumentArticleLinkKeys -Lookup $ArticleURLReplacement -Article $createdStub -Row $companydocument -ExtraNames $stubLinkNames -HuduBaseUrl $HuduBaseURL
+                    Write-Host "Prepared document article stub '$($companydocument.name)' with ID $($createdStub.id)"
+                }
+            } catch {
+                Write-Warning "Could not prepare article stub for '$($companydocument.name)': $($_.Exception.Message)"
+            }
+        }
+    }
     foreach ($companydocument in $documentsForCompany){
         $matchedDocument = $null
         $matchedDocument = $allHududocuments | Where-Object {
             $_.company_id -eq $matchedCompany.id -and $(test-equiv -A $_.name -B $companydocument.name)} | Select-Object -first 1
 
         $matchedDocument = $matchedDocument ?? $($(Get-HuduArticles -CompanyId $matchedCompany.id -name $companydocument.name) | Select-Object -first 1)
-        if ($matcheddocument){
+        $matchedDocumentWasPrepared = $matchedDocument -and $precreatedDocumentIds.Contains([string]$matchedDocument.id)
+        if ($matcheddocument -and -not $matchedDocumentWasPrepared){
             if ($true -eq $skiponmatch){continue}
             # Write-Host "matched $($companydocument.name) to doc in Hudu @ $($matchedDocument.url); updating"
                 $ITBoostData.documents['matches'] += @{
@@ -259,6 +387,11 @@ foreach ($company in $groupeddocuments.Keys) {
             $firstHtmlPath = $null
             $OutFile = "$debug_folder\$($companydocument.resource_id).html"
             $URLReplacement = @{}
+            foreach ($key in $ArticleURLReplacement.Keys) {
+                if (-not $URLReplacement.ContainsKey($key)) {
+                    $URLReplacement[$key] = $ArticleURLReplacement[$key]
+                }
+            }
 
             
             $newdocumentrequest=@{
