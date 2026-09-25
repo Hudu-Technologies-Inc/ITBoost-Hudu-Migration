@@ -8,7 +8,7 @@ Easy Migration from ITBoost to Hudu
 
 ### Prerequisites
 
-- Hudu Instance of 2.43.1 or newer
+- Hudu Instance of 2.46.0 or newer
 - Hudu API Key
 - ITBoost Export
 - Powershell 7.5.1 or later on Windows PC
@@ -23,12 +23,17 @@ Easy Migration from ITBoost to Hudu
 ## Getting Started
 
 You'll need just a few items to start
-The default configurations csv is invalid. You'll need to replace the 2nd column named 'model' to 'modelo' first, using excel or libreoffice
+The default configurations csv is invalid. You'll need to replace the 2nd column named 'model' to 'modelo' first, using excel or libreoffice.
+
+Also, you might notice that there may be some CSVs that do not load properly as a result of having duplicate headers/column names. Passwords is a common name that is duplicated among special asset types and may need to have one column renamed as well.
 
 ### Setup Hudu
 
 You'll need to add an API key that has full access, if possible. copy it to clipboard for later or add it to your environment file.
 Other than that, it's best to start fresh. You can custom-map fields in the same way that you map fields which are templated to custom layouts, but it's generally easier if you start fresh.
+
+Also, ensure that IPAM, Company and Centralkb articles, as well as asset core features are enabled in Hudu. These items are required.
+<img width="2322" height="2338" alt="image" src="https://github.com/user-attachments/assets/f678a6c4-6762-447c-ac2a-fdefd82e9e9a" />
 
 ### Environment File
 
