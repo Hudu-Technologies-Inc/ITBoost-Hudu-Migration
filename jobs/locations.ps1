@@ -39,7 +39,7 @@ if ($ITBoostData.ContainsKey("locations") -and $ITBoostData.locations.CSVData){
             @{label= "Door Code"; "show_in_list"=$false; field_type="Text"; required=$null; hint=""; position=6},
             @{label= "Special Information"; "show_in_list"=$false; field_type="Text"; required=$false; hint=""; position=7},
             @{label= "Notes"; "show_in_list"=$false; field_type="RichText"; required=$false; hint=""; position=8}
-        ) -Icon "fas fa-building" -IconColor "#ffffff" -Color "#6136ff" -IncludePasswords $true -IncludePhotos $true -IncludeComments $true -IncludeFiles $true)
+        ) -Icon "$(Find-FontAwesomeIcon -Search 'building')" -IconColor "#ffffff" -Color "#6136ff" -IncludePasswords $true -IncludePhotos $true -IncludeComments $true -IncludeFiles $true)
         $LocationLayout = $locationlayout.asset_layout ?? $locationlayout
         $LocationLayout = Get-HuduAssetLayouts -id $LocationLayout.id
     }

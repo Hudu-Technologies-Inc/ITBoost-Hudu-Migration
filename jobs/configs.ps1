@@ -92,7 +92,7 @@ if ($ITBoostData.ContainsKey("configurations") -and $ITBoostData.configurations.
                     @{label = "location"; field_type = "AssetTag"; linkable_id=$LocationLayout.id; show_in_list = $false; position=13},
                     @{label = "configuration interfaces"; field_type = "Text"; show_in_list = $false; position=14},
                     @{label=$ConfigsRichTextOverviewField; field_type = "RichText"; position=259;}
-        ) -Icon "fas fa-users" -IconColor "#ffffff" -Color "#6136ff" -IncludePasswords $true -IncludePhotos $true -IncludeComments $true -IncludeFiles $true).asset_layout
+        ) -Icon "$(Find-FontAwesomeIcon -Search 'config')" -IconColor "#ffffff" -Color "#6136ff" -IncludePasswords $true -IncludePhotos $true -IncludeComments $true -IncludeFiles $true).asset_layout
         $configsLayout = Get-HuduAssetLayouts -id $configsLayout.id; $configsLayout = $configsLayout.asset_layout ?? $configsLayout
     }
     $configsFields = $configsLayout.fields

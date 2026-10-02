@@ -110,7 +110,7 @@ if (-not $contactsLayout){
     @{label="IP Address of Primary Computer";   show_in_list=$false;   field_type="Website";required=$false;   hint="";   linkable_id=5;   position=13},
     @{label="Location";   show_in_list=$true;   field_type="AssetTag";required=$false;   hint="";   linkable_id=$LocationLayout.id;   multiple_options=$false; position=14},
     @{label="ITBID";   show_in_list=$false;   field_type="text";required=$false;   hint="ID from ITBoost";  multiple_options=$false; position=17}
-    ) -Icon "fas fa-users" -IconColor "#ffffff" -Color "#6136ff" -IncludePasswords $true -IncludePhotos $true -IncludeComments $true -IncludeFiles $true).asset_layout
+    ) -Icon "$(Find-FontAwesomeIcon -Search 'users')" -IconColor "#ffffff" -Color "#6136ff" -IncludePasswords $true -IncludePhotos $true -IncludeComments $true -IncludeFiles $true).asset_layout
     $contactsLayout = $contactsLayout.asset_layout ?? $contactsLayout
     $null = Set-HuduAssetLayout -id $contactsLayout.id -Active $true
     $contactsLayout = Get-HuduAssetLayouts -id $contactsLayout.id
