@@ -66,7 +66,7 @@ $flexisLayout = $flexisLayout.asset_layout ?? $flexisLayout
 if (-not $flexisLayout){
     $GivenIcon = try {$($FontAwesomeMap[$($FontAwesomeMap.Keys | Where-Object {$_ -ilike "*$sourceProperty*" -or $_ -ilike "*$FlexiLayoutName*"} | select-object -first 1)])} catch {"fas fa-boxes"}
     try {
-    $flexisLayout = (New-HuduAssetLayout -name "$FlexiLayoutName" -Fields $FlexiFields -IncludePasswords $true -IncludePhotos $true -IncludeComments $true -IncludeFiles $true -color "#6136ff" -icon_color "#ffffff"  -Icon $givenICon)
+    $flexisLayout = (New-HuduAssetLayout -name "$FlexiLayoutName" -Fields $FlexiFields -IncludePasswords $true -IncludePhotos $true -IncludeComments $true -IncludeFiles $true -color "#6136ff" -icon_color "#ffffff"  -Icon "$(find-fontawesomeicon -search $FlexiLayoutName)")
     # re-fetch to get proper shape
     $flexisLayout = get-huduassetlayouts -name $FlexiLayoutName | select-object -first 1
     $flexisLayout = $flexisLayout.asset_layout ?? $flexisLayout

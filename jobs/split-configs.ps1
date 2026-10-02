@@ -8,7 +8,7 @@ $allHuduConfigs = $allHuduConfigs ?? $(Get-HuduAssets -AssetLayoutId $configsLay
 $fieldPayload = @(foreach ($f in $configsLayout.fields) { Copy-LayoutFieldPayload $f })
 $configsMoved = @{}
 foreach ($configType in $itboostdata.configurations.csvdata.configuration_type | select-object -unique) {
-        $newlayout = new-huduassetlayout -name "$configType" -fields $fieldPayload -IncludePasswords $true -IncludePhotos $true -IncludeComments $true -IncludeFiles $true -Color "#6136ff" -Icon "fas fa-cogs" -IconColor "#ffffff" -Color "#6136ff"
+        $newlayout = new-huduassetlayout -name "$configType" -fields $fieldPayload -IncludePasswords $true -IncludePhotos $true -IncludeComments $true -IncludeFiles $true -Color "#6136ff" -Icon "$(Find-FontAwesomeIcon -Search $configType)" -IconColor "#ffffff" -Color "#6136ff"
         $newlayout = get-huduassetlayouts -name "$configType" | select-object -first 1
         $newlayout = $newlayout.asset_layout ?? $newlayout
         $configsMoved[$configType] = layout2layout -sourceLayoutName $configsLayout.name -targetLayoutName $newlayout.name -sourceAssets $($allHuduConfigs | Where-Object {($_.fields | Where-Object name -ieq 'Configuration Type').value -ieq $configType})
