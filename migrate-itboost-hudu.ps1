@@ -7,12 +7,12 @@ if ($MyInvocation.InvocationName -eq '.') {
 }
 $availableJobs = @(
 "read-csvs",
-# "companies",
-# "locations",
-# "contacts",
-# "websites",
-# "configs",
-# "expand-configs"
+"companies",
+"locations",
+"contacts",
+"websites",
+"configs",
+"expand-configs",
 "passwords",
 "documents",
 "runbooks",
