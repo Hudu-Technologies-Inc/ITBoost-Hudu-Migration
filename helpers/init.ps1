@@ -362,7 +362,7 @@ function Set-HuduModuleInitialized {
 
 function Get-PSVersionCompatible {
     param (
-        [version]$RequiredPSversion = [version]"7.5.1"
+        [version]$RequiredPSversion = [version]"7.6.7"
     )
 
     $currentPSVersion = (Get-Host).Version
@@ -370,8 +370,9 @@ function Get-PSVersionCompatible {
 
     if ($currentPSVersion -lt $RequiredPSversion) {
         Write-Host "PowerShell $RequiredPSversion or higher is required. You have $currentPSVersion." -ForegroundColor Red
-        exit 1
+        return $false
     } else {
         Write-Host "PowerShell version $currentPSVersion is compatible." -ForegroundColor Green
     }
+    return $true
 }

@@ -45,7 +45,7 @@ foreach ($file in $(Get-ChildItem -LiteralPath (Join-Path $project_workdir 'help
 $debug_folder = Initialize-MigrationOutputDirectory -Path $debug_folder
 $TMPbasedir = Initialize-MigrationOutputDirectory -Path $TMPbasedir
 $companiesIndex = Join-Path $debug_folder 'MatchedCompanies.json'
-Get-PSVersionCompatible; Set-HuduModuleInitialized -HuduBaseURL $HuduBaseURL -HuduAPIKey $HuduAPIKey;
+if ($false -eq $(Get-PSVersionCompatible)) {exit 1}; Set-HuduModuleInitialized -HuduBaseURL $HuduBaseURL -HuduAPIKey $HuduAPIKey;
 $currentVersionResult = $($currentVersionResult ?? $([version]((get-huduappinfo).version))); $MinAllowedVersion = ([version]"2.46.0"); $DisallowedVersions = @([version]("2.37.0")); if ($currentVersionResult -lt $MinAllowedVersion){Write-Host "Sorry, your Hudu version $currentVersionResult is not supported. You'll need to upgrade to $($MinAllowedVersion) in order to continue."; exit 1;}; if ($DisallowedVersions -contains [version]($currentVersionResult)) {write-host "disallowed version $($currentVersionResult); Please upgrade or downgrade if possible first." -ForegroundColor Red; exit 1;};
 if ($null -eq $UseSimpleMap){$UseSimpleMap = $true}
 $mergeOnMatch = $mergeOnMatch ?? $("yes" -eq $(Select-Objectfromlist -objects @("yes","no") -message "When matches are found, do you want to merge data from ITBoost into Hudu (yes) or skip asset and keep existing Hudu data (no)?"))
