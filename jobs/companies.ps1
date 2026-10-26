@@ -1,54 +1,60 @@
-$huducompanies = $huduCompanies ?? $(get-huducompanies)
-if ($ITBoostData.ContainsKey("organizations")){
-    if (-not $ITBoostData.organizations.ContainsKey('matches')) { $ITBoostData.organizations['matches'] = @() }
-    $ITBoostData.organizations['matches'] = @($ITBoostData.organizations['matches'] ?? @())
+$huduCompanies = @(Get-HuduCompanies -ErrorAction Stop)
+if (-not $ITBoostData.organizations.CompanyCandidates) {
+    $null = Get-ITBoostOrganizationCatalog -ITBoostData $ITBoostData
+}
+$ITBoostData.organizations.matches = @()
+$companyFieldMap = @{
+    organization_type = 'CompanyType'; address_1 = 'AddressLine1'; address_2 = 'AddressLine2'
+    city = 'City'; state = 'State'; zip = 'Zip'; country = 'Country'
+}
 
-    foreach ($row in $ITBoostData.organizations.CSVData){
-        if ($row.organization_status -ieq "Inactive") {
-            if ($true -eq $SkipInactive){continue}
-        }        
-        $matchedCompany=$null
-        $matchedCompany = Get-HuduCompanyFromName -CompanyName $row.name  -deepCompanySearch $true -HuduCompanies $huduCompanies  -existingIndex $($ITBoostData.organizations["matches"] ?? $null) 
+try {
+    foreach ($candidate in $ITBoostData.organizations.CompanyCandidates) {
+        $organizationRows = @($candidate.OrganizationRows.ToArray())
+        $eligibleRows = @($organizationRows | Where-Object { $_.organization_status -ine 'Inactive' })
+        if ($SkipInactive -and $organizationRows.Count -gt 0 -and $eligibleRows.Count -eq 0) {
+            Write-Host "Skipping explicitly inactive organization $($candidate.Name)"
+            continue
+        }
+
+        $matchedCompany = Get-HuduCompanyFromName -CompanyName $candidate.Name -HuduCompanies $huduCompanies -ExactNameOnly
         $matchedCompany = $matchedCompany.company ?? $matchedCompany
-        if ($matchedCompany){
-            Write-Host "Matched company $($matchedCompany.name) to $($row.name)"
-            $ITBoostData.organizations["matches"]+=@{
-                CompanyName=$row.name
-                HuduCompany=$matchedCompany
-                ITBID=$row.id
-                HuduID=$matchedCompany.id
+        if ($null -eq $matchedCompany) {
+            $newCompanyRequest = @{ Name = $candidate.Name }
+            # Prefer metadata from active records, then fill missing fields from other exported organization rows.
+            $metadataRows = $eligibleRows + @($organizationRows | Where-Object { $_.organization_status -ieq 'Inactive' })
+            foreach ($field in $companyFieldMap.Keys) {
+                $value = $metadataRows | ForEach-Object { $_.$field } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1
+                if ($null -ne $value) { $newCompanyRequest[$companyFieldMap[$field]] = $value }
             }
-            if ($true -eq $skiponmatch){continue}
-        } else {
-            $newCompanyRequest = @{
-                Name=$row.name
-            }
-            Write-Host "No match for company $($newCompanyRequest.name), creating now"
-            if (-not [string]::IsNullOrEmpty($row.organization_type)){$newCompanyRequest["CompanyType"] = $row.organization_type}
-            if (-not [string]::IsNullOrEmpty($row.address_1)){$newCompanyRequest["AddressLine1"] = $row.address_1}
-            if (-not [string]::IsNullOrEmpty($row.address_2)){$newCompanyRequest["AddressLine2"] = $row.address_2}
-            if (-not [string]::IsNullOrEmpty($row.city)){$newCompanyRequest["City"] = $row.city}
-            if (-not [string]::IsNullOrEmpty($row.state)){$newCompanyRequest["State"] = $row.address_2}
-            if (-not [string]::IsNullOrEmpty($row.zip)){$newCompanyRequest["Zip"] = $row.zip}
-            if (-not [string]::IsNullOrEmpty($row.country)){$newCompanyRequest["Country"] = $row.country}
+            Write-Host "No match for company $($candidate.Name), creating now"
             try {
-                $newCompany = $null
-                $newCompany=New-HuduCompany @newCompanyRequest
-                $newCompany = $newCompany.company ?? $newCompany
-                write-host "Created new company $($newCompany.name) with ID $($newCompany.id)"
-                if ($newCompany){
-                    $ITBoostData.organizations["matches"]+=@{
-                        ITBID=$row.id
-                        HuduID=$newCompany.id
-                        CompanyName=$row.name
-                        HuduCompany=$newCompany
-                    }
-                }
+                $matchedCompany = New-HuduCompany @newCompanyRequest -ErrorAction Stop
+                $matchedCompany = $matchedCompany.company ?? $matchedCompany
+                if ($null -eq $matchedCompany -or $matchedCompany.id -le 0) { throw 'Hudu did not return a valid company ID.' }
             } catch {
-                Write-Host "Error during company create $_"
+                throw "Cannot ensure organization '$($candidate.Name)' exists in Hudu: $($_.Exception.Message)"
+            }
+            $huduCompanies += $matchedCompany
+            Write-Host "Created company $($matchedCompany.name) with ID $($matchedCompany.id)"
+        } else {
+            Write-Host "Matched company $($matchedCompany.name) to $($candidate.Name)"
+        }
+
+        # Keep each original ITBoost ID linked to the same company when source rows deduplicate by name.
+        $sourceIds = @($organizationRows | ForEach-Object { $_.id } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+        if ($sourceIds.Count -eq 0) { $sourceIds = @($null) }
+        foreach ($sourceId in $sourceIds) {
+            $ITBoostData.organizations.matches += @{
+                CompanyName = $candidate.Name
+                Aliases = @($candidate.Aliases)
+                ITBID = $sourceId
+                HuduID = $matchedCompany.id
+                HuduCompany = $matchedCompany
             }
         }
     }
-} else {write-host "No organizations data found, cannot proceed."; exit 1}
-$huduCompanies = Get-HuduCompanies
-($ITBoostData.organizations["matches"] ?? @()) | convertto-json -depth 99 | out-file $companiesIndex -Force
+} finally {
+    # Save successful matches even if a later company fails; the job runner then stops dependent jobs.
+    Export-MigrationJson -InputObject @($ITBoostData.organizations.matches) -LiteralPath $companiesIndex
+}

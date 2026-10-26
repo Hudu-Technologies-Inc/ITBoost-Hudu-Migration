@@ -23,9 +23,19 @@ Easy Migration from ITBoost to Hudu
 ## Getting Started
 
 You'll need just a few items to start
-The default configurations csv is invalid. You'll need to replace the 2nd column named 'model' to 'modelo' first, using excel or libreoffice.
+CSV headers are repaired during import without modifying your export files. The first column keeps its name; repeated columns receive suffixes such as `model_2` or `password_2`. Existing suffixed names are reserved to prevent collisions. Blank headers receive names such as `Column6`, and leading/trailing header whitespace is trimmed. `ImportedCsvHeaders.json` in your debug directory records the original and imported names for every column. Update any custom mappings that depended on your previous manual column renames.
 
-Also, you might notice that there may be some CSVs that do not load properly as a result of having duplicate headers/column names. Passwords is a common name that is duplicated among special asset types and may need to have one column renamed as well.
+Company discovery uses organization names across all entity CSVs, including subsystem fields such as `CompanyName`, before any dependent migration jobs run. Names are trimmed, whitespace is collapsed, Unicode is normalized, and names are title-cased and deduplicated. This also title-cases acronyms, for example `ICU` becomes `Icu`. Punctuation and legal suffixes are retained. Existing Hudu company names are not renamed.
+
+Original aliases, organization IDs, and metadata are retained. Companies mentioned only in contacts, configurations or other CSVs are created with their discovered name. Explicitly inactive organizations still respect `$SkipInactive`. If a company cannot be created or its name matches multiple Hudu company IDs, migration stops before dependent jobs. `DiscoveredOrganizations.json` lists the names, aliases and source files for review.
+
+To preview discovery without connecting to Hudu:
+
+```powershell
+.\all-orgs-test.ps1 -ITBoostExportPath 'X:\your-export' -ReportDirectory '.\debug\org-preview'
+```
+
+The preview and migration scan nested entity folders, excluding `attachments`, `documents`, and `RB` content directories. CSV files attached to articles are not treated as entity exports. Matching entity filenames from multiple subsystem folders contribute rows to the same dataset. Each row includes its original file path in `SourceFile` and its record number in `CsvRow`.
 
 ### Setup Hudu
 
@@ -83,7 +93,7 @@ The process should be relatively quick and painless. It will descriptively tell 
 ## Core Jobs
 
 Core Jobs that are performed are below. you can find some more in-depth explanations for the less-obvious ones below this section.
-To exclude any jobs that you dont care for or need, you can simply comment-out (prepend `#` symbol) in the main `migrate-itboost-hudu.ps1` script. It isn't reccomended to exclude mission-critical items like companies or locations unless an advanced use-case arrives, however.
+To exclude optional jobs, comment them out (prepend `#`) in the main `migrate-itboost-hudu.ps1` script. `read-csvs` and `companies` always run first as prerequisites, including when you select only later jobs.
 
 read-csvs
 get-hududata
@@ -175,6 +185,16 @@ It will surely get easier in the future with some automatic parsing stuff, but f
 ## Outputs and Logging
 
 Entities that are created and/or matched will have a JSON file dumped out in your debug folder, which will be in the project directory. These files can be huge, but are best to be saved, since they can prove useful in case something goes south.
+
+You can set `$debug_folder` in your environment file to choose another output directory. The script creates and checks the debug and conversion directories before starting migration jobs. If `$TMPbasedir` is unset, conversion files use `ITBoost-Hudu-Migration` under the Windows temporary directory. Relative paths are resolved at startup so later location changes do not redirect output.
+
+Each JSON export recreates its parent directory if needed and writes UTF-8 JSON to a temporary file beside the destination before replacing it. Existing output is preserved if serialization or writing fails. Match files always contain JSON arrays, including `[]` when no matches were collected. Embedded password exports retain their object structure.
+
+A JSON export failure stops the migration and records the failed job in `$ITBoostData.ErrorsEncountered`; it is not added to `$ITBoostData.CompletedJobs`. Current results remain in `$ITBoostData` in your dot-sourced session. Once the path or permissions issue is fixed, you can save those results without repeating API changes. For example, to save company matches:
+
+```powershell
+Export-MigrationJson -InputObject @($ITBoostData.organizations['matches'] ?? @()) -LiteralPath $companiesIndex
+```
 
 Your logged files will vary in name based on which layouts you have in ITBoost and which ones have already been processed. They won't be unlike the picture, below, however.
 

@@ -2945,19 +2945,9 @@ function Export-DocPropertyJson {
     $base = [System.IO.Path]::GetFileNameWithoutExtension($Doc.LocalPath)
     $outPath = [System.IO.Path]::Combine($dir, "$base-$($Property.ToLower()).json")
 
-    $value | ConvertTo-Json -Depth $Depth | Out-File -FilePath $outPath -Encoding UTF8
+    Export-MigrationJson -InputObject $value -LiteralPath $outPath -Depth $Depth
 
     return $outPath
-}
-function Get-EnsuredPath {
-    param([string]$path)
-    $outpath = if (-not $path -or [string]::IsNullOrWhiteSpace($path)) { $(join-path $(Resolve-Path .).path "debug") } else {$path}
-    if (-not (Test-Path $outpath)) {
-        Get-ChildItem -Path "$outpath" -File -Recurse -Force | Remove-Item -Force
-        New-Item -ItemType Directory -Path $outpath -Force -ErrorAction Stop | Out-Null
-        write-verbose "path is now present: $outpath"
-    } else {write-verbose "path is present: $outpath"}
-    return $outpath
 }
 
 function Write-ErrorObjectsToFile {

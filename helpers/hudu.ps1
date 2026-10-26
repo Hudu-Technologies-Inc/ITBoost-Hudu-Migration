@@ -897,9 +897,33 @@ function Get-HuduCompanyFromName {
         [array]$HuduCompanies,
         [bool]$includenicknames = $false,
         [array]$existingIndex = @(),
-        [bool]$deepCompanySearch = $false
+        [bool]$deepCompanySearch = $false,
+        [switch]$ExactNameOnly
     )
     if ([string]::IsNullOrWhiteSpace($CompanyName)) { return $null }
+
+    # Prefer the names discovered at CSV import time before the legacy fuzzy matching rules.
+    $catalogName = ConvertTo-ITBoostOrganizationName -Name $CompanyName
+    $exactMatches = [Collections.Generic.List[object]]::new()
+    foreach ($entry in $existingIndex) {
+        $names = @($entry.CompanyName) + @($entry.Aliases) + @($entry.HuduCompany.name)
+        if ($names | Where-Object { (ConvertTo-ITBoostOrganizationName -Name $_) -eq $catalogName }) {
+            $company = $entry.HuduCompany.company ?? $entry.HuduCompany
+            if ($company.id -gt 0) { $exactMatches.Add($company) }
+        }
+    }
+    foreach ($companyResult in $HuduCompanies) {
+        $company = $companyResult.company ?? $companyResult
+        if ($company.id -gt 0 -and (ConvertTo-ITBoostOrganizationName -Name $company.name) -eq $catalogName) {
+            $exactMatches.Add($company)
+        }
+    }
+    $distinctMatches = @($exactMatches.ToArray() | Group-Object id | ForEach-Object { $_.Group[0] })
+    if ($distinctMatches.Count -gt 1) {
+        throw "Organization '$CompanyName' matches multiple Hudu company IDs: $($distinctMatches.id -join ', '). Resolve the duplicate companies before continuing."
+    }
+    if ($distinctMatches.Count -eq 1) { return $distinctMatches[0] }
+    if ($ExactNameOnly) { return $null }
 
         $normalizedCompanyName = normalize-companyName -Text $CompanyName
     # matched first

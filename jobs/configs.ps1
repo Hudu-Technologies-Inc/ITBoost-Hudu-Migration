@@ -214,4 +214,4 @@ foreach ($company in $uniqueCompanies) {
 } else {write-host "no configurations in CSV! skipping."; return}
 $allHuduConfigs = Get-HuduAssets -AssetLayoutId $configsLayout.id
 
-$($ITBoostData.configurations["matches"] ?? @()) | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "MatchedConfigurations.json")) -Force
+Export-MigrationJson -InputObject @($ITBoostData.configurations["matches"] ?? @()) -LiteralPath (Join-Path $debug_folder 'MatchedConfigurations.json')

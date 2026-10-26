@@ -159,4 +159,4 @@ if ($ITBoostData.ContainsKey("locations") -and $ITBoostData.locations.CSVData){
 } else {write-host "no locations in CSV! skipping."; return}
     $allHuduLocations = Get-HuduAssets -AssetLayoutId $LocationLayout.id
 
-$ITBoostData.locations["matches"] | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "MatchedLocations.json")) -Force
+Export-MigrationJson -InputObject @($ITBoostData.locations["matches"] ?? @()) -LiteralPath (Join-Path $debug_folder 'MatchedLocations.json')

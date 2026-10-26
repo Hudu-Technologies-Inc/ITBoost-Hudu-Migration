@@ -255,11 +255,7 @@ if (-not $ITBoostData.documents.ContainsKey('matches')) { $ITBoostData.documents
 $ITBoostData.documents['matches'] = @($ITBoostData.documents['matches'] ?? @())
 
 $groupeddocuments = $ITBoostData.documents.CSVData | Group-ObjectSafeHashTable { $_.organization } -BlankKey "$internalCompanyName"
-try {
-    $allHududocuments = Get-HuduArticles
-} catch {
-    $allHududocuments=@()
-}
+$allHududocuments = @(Get-HuduArticles -ErrorAction Stop)
 $ArticleURLReplacement = @{}
 foreach ($existingArticle in @($allHududocuments)) {
     Add-DocumentArticleLinkKeys -Lookup $ArticleURLReplacement -Article $existingArticle -HuduBaseUrl $HuduBaseURL
@@ -279,6 +275,7 @@ $docToFolder = foreach ($row in $ITBoostData.documents.CSVData) {
     }
 }
 Write-Host "unresolved folders? $($docToFolder | Sort-Object { -not $_.folder }, @{e='confidence';d=$true} | Format-Table -AutoSize)"
+try {
 foreach ($company in $groupeddocuments.Keys) {
     $documentsForCompany = $groupeddocuments[$company]
     write-host "starting $company with $($documentsForCompany.count) docs"
@@ -314,6 +311,10 @@ foreach ($company in $groupeddocuments.Keys) {
 
             $stubMatchedDocument = $stubMatchedDocument ?? $($(Get-HuduArticles -CompanyId $matchedCompany.id -name $companydocument.name) | Select-Object -first 1)
             if ($stubMatchedDocument) {
+                # A previous attempt may have created the article before failing to populate its content.
+                if ((As-HtmlString $stubMatchedDocument.content).Trim() -eq 'in-transit') {
+                    [void]$precreatedDocumentIds.Add([string]$stubMatchedDocument.id)
+                }
                 Add-DocumentArticleLinkKeys -Lookup $ArticleURLReplacement -Article $stubMatchedDocument -Row $companydocument -ExtraNames $stubLinkNames -HuduBaseUrl $HuduBaseURL
                 continue
             }
@@ -329,7 +330,7 @@ foreach ($company in $groupeddocuments.Keys) {
             }
 
             try {
-                $createdStub = New-HuduArticle @stubRequest
+                $createdStub = New-HuduArticle @stubRequest -ErrorAction Stop
                 $createdStub = $createdStub.article ?? $createdStub
                 if ($createdStub -and $createdStub.id) {
                     [void]$precreatedDocumentIds.Add([string]$createdStub.id)
@@ -350,7 +351,6 @@ foreach ($company in $groupeddocuments.Keys) {
         $matchedDocument = $matchedDocument ?? $($(Get-HuduArticles -CompanyId $matchedCompany.id -name $companydocument.name) | Select-Object -first 1)
         $matchedDocumentWasPrepared = $matchedDocument -and $precreatedDocumentIds.Contains([string]$matchedDocument.id)
         if ($matcheddocument -and -not $matchedDocumentWasPrepared){
-            if ($true -eq $skiponmatch){continue}
             # Write-Host "matched $($companydocument.name) to doc in Hudu @ $($matchedDocument.url); updating"
                 $ITBoostData.documents['matches'] += @{
                     CompanyName      = $companydocument.organization
@@ -416,14 +416,14 @@ foreach ($company in $groupeddocuments.Keys) {
                 Category = Get-ExtensionCategory $_
             }
             }
-            $directDocsNeeded =  $($categorized | where-object {$_.Category -eq "Web"})
-            $imagesNeeded = $($categorized | where-object {$_.Category -eq "Image"})
+            $directDocsNeeded = @($categorized | Where-Object { $_.Category -eq 'Web' })
+            $imagesNeeded = @($categorized | Where-Object { $_.Category -eq 'Image' })
             
             if ($AllowConvert -and $sofficePath) {
-                $uploadsNeeded     = $categorized | Where-Object { $_.Category -in @('NoConvert','Unknown') }
-                $convertJobsNeeded = $categorized | Where-Object { $_.Category -eq 'Allowed' }
+                $uploadsNeeded     = @($categorized | Where-Object { $_.Category -in @('NoConvert','Unknown') })
+                $convertJobsNeeded = @($categorized | Where-Object { $_.Category -eq 'Allowed' })
             } else {
-                $uploadsNeeded     = $categorized | Where-Object { $_.Category -in @('NoConvert','Unknown','Allowed') }
+                $uploadsNeeded     = @($categorized | Where-Object { $_.Category -in @('NoConvert','Unknown','Allowed') })
                 $convertJobsNeeded = @()
             }
 
@@ -458,7 +458,7 @@ foreach ($company in $groupeddocuments.Keys) {
 
 
             if (-not $matchedDocument){
-                $CreatedArticle = New-HuduArticle @newdocumentrequest
+                $CreatedArticle = New-HuduArticle @newdocumentrequest -ErrorAction Stop
                 $newdocumentrequest["Id"] = $CreatedArticle.article.id ?? $CreatedArticle.id
             }
             if (-not $newdocumentrequest["Id"]) {
@@ -527,7 +527,7 @@ foreach ($company in $groupeddocuments.Keys) {
                 $uploadsAdded += $u
             }
             if ($firstHtmlpath) {
-                $DocContents = Rewrite-InlineLinksAndImages -InFile $firstHtmlPath -Lookup $URLReplacement 
+                $DocContents = As-HtmlString (Rewrite-InlineLinksAndImages -InFile $firstHtmlPath -Lookup $URLReplacement)
             } 
             $unresolvedImageSources = Get-UnresolvedDocumentImageSources -Html $DocContents
             if ($unresolvedImageSources.Count -gt 0) {
@@ -539,10 +539,10 @@ foreach ($company in $groupeddocuments.Keys) {
             try {
                 Write-host "$($($newdocumentrequest | convertto-json).ToString())"
                 $newdocument = $null
-                $newdocument = Set-HuduArticle @newdocumentrequest
+                $newdocument = Set-HuduArticle @newdocumentrequest -ErrorAction Stop
                 $newdocument = $newdocument.article ?? $newdocument
             } catch {
-                write-host "Error creating location: $_"
+                throw "Could not update document '$($companydocument.name)' (article $($newdocumentrequest.Id)): $($_.Exception.Message)"
             }
             if ($null -ne $newdocument){
                 write-host "created document $($companydocument.name) with ID $($newdocument.id) for company $($matchedCompany.name)"
@@ -558,5 +558,7 @@ foreach ($company in $groupeddocuments.Keys) {
         }
     }
 }
-($ITBoostData.documents["matches"] ?? @()) | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "MatchedDocuments.json")) -Force
+} finally {
+    Export-MigrationJson -InputObject @($ITBoostData.documents["matches"] ?? @()) -LiteralPath (Join-Path $debug_folder 'MatchedDocuments.json')
+}
     

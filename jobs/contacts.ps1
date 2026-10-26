@@ -233,4 +233,4 @@ foreach ($company in $groupedContacts.Keys) {
 #     if ($dupecontact.archived -eq $true){continue}
 #     Remove-HuduAsset -id $dupecontact.id -CompanyId $dupecontact.company_id -Confirm:$false}
 
-$ITBoostData.contacts["matches"] | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "MatchedContacts.json")) -Force
+Export-MigrationJson -InputObject @($ITBoostData.contacts["matches"] ?? @()) -LiteralPath (Join-Path $debug_folder 'MatchedContacts.json')

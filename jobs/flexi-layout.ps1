@@ -363,4 +363,4 @@ foreach ($company in $groupedflexis.Keys) {
     }
 }
 
-$ITBoostData.$sourceProperty["matches"] | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "Matched-flex-$($sourceProperty).json")) -Force
+Export-MigrationJson -InputObject @($ITBoostData.$sourceProperty["matches"] ?? @()) -LiteralPath (Join-Path $debug_folder "Matched-flex-$sourceProperty.json")

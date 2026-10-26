@@ -302,7 +302,8 @@ function Rewrite-InlineLinksAndImages {
     param([string]$RawUrl,[string]$Base,[hashtable]$Map,[string]$LocalPath)
     $k = _NormalizeUrl -Raw $RawUrl -Base $Base
     if ($k -and $Map.ContainsKey($k)) { return $Map[$k] }
-    $fn = if ($k) { [IO.Path]::GetFileName(([Uri]$k).AbsolutePath) } else { [IO.Path]::GetFileName(($RawUrl -split '[?#]',2)[0]) }
+    $path = if ($k -match '^(?i)https?://') { ([Uri]$k).AbsolutePath } else { ($RawUrl -split '[?#]',2)[0] }
+    $fn = [IO.Path]::GetFileName($path)
     if ($fn -and $Map.ContainsKey($fn)) { return $Map[$fn] }
     if ($LocalPath) {
       $lfn = [IO.Path]::GetFileName($LocalPath)
@@ -333,15 +334,15 @@ function Rewrite-InlineLinksAndImages {
   $doc = $null
   try {
     $doc = New-Object -ComObject 'HTMLFile'
-    $doc.Open()
+    [void]$doc.Open()
     try {
       # 1) direct
-      $doc.write([string[]]@($html))
+      [void]$doc.write([string[]]@($html))
     } catch {
       # 2) InvokeMember fallback
       [void]$doc.GetType().InvokeMember('write','InvokeMethod',$null,$doc,@([string[]]@($html)))
     }
-    $doc.Close()
+    [void]$doc.Close()
 
     # effective base (prefer <base>, else caller’s)
     $baseNode = @($doc.getElementsByTagName('base'))[0]
@@ -351,8 +352,9 @@ function Rewrite-InlineLinksAndImages {
 
     # IMGs
     foreach ($img in @($doc.getElementsByTagName('img'))) {
-      $srcRaw = $img.getAttribute('src'); if (-not (_Eligible $srcRaw $effectiveBase $OnlyIfHostMatches)) { continue }
-      $fullRaw = $img.getAttribute('data-src-original')
+      # Flag 2 returns the literal attribute; MSHTML otherwise prefixes relative URLs with "about:".
+      $srcRaw = $img.getAttribute('src', 2); if (-not (_Eligible $srcRaw $effectiveBase $OnlyIfHostMatches)) { continue }
+      $fullRaw = $img.getAttribute('data-src-original', 2)
       # resolve local thumbnail/full (../ handled)
       $localPath = $null
       foreach ($rel in @($fullRaw,$srcRaw)) {
@@ -364,14 +366,14 @@ function Rewrite-InlineLinksAndImages {
       }
       $rep = _FindReplacement -RawUrl $srcRaw -Base $effectiveBase -Map $Lookup -LocalPath $localPath
       if ($rep) {
-        if ($KeepOriginals) { $img.setAttribute('data-original-src', $srcRaw) }
-        $img.setAttribute('src', $rep)
+        if ($KeepOriginals) { [void]$img.setAttribute('data-original-src', $srcRaw) }
+        [void]$img.setAttribute('src', $rep)
         $srcset = $img.getAttribute('srcset')
         if ($srcset) {
           $newSet = _RewriteSrcSet -SrcSet $srcset -Map $Lookup -Base $effectiveBase
           if ($newSet -ne $srcset) {
-            if ($KeepOriginals) { $img.setAttribute('data-original-srcset', $srcset) }
-            $img.setAttribute('srcset', $newSet)
+            if ($KeepOriginals) { [void]$img.setAttribute('data-original-srcset', $srcset) }
+            [void]$img.setAttribute('srcset', $newSet)
           }
         }
       }
@@ -379,12 +381,12 @@ function Rewrite-InlineLinksAndImages {
 
     # Anchors
     foreach ($a in @($doc.getElementsByTagName('a'))) {
-      $hrefRaw = $a.getAttribute('href'); if (-not (_Eligible $hrefRaw $effectiveBase $OnlyIfHostMatches)) { continue }
+      $hrefRaw = $a.getAttribute('href', 2); if (-not (_Eligible $hrefRaw $effectiveBase $OnlyIfHostMatches)) { continue }
       $rep = _FindReplacement -RawUrl $hrefRaw -Base $effectiveBase -Map $Lookup -LocalPath $null
       if ($rep) {
-        if ($KeepOriginals) { $a.setAttribute('data-original-href', $hrefRaw) }
-        $a.setAttribute('href', $rep)
-        $a.setAttribute('target','_blank'); $a.setAttribute('rel','noopener')
+        if ($KeepOriginals) { [void]$a.setAttribute('data-original-href', $hrefRaw) }
+        [void]$a.setAttribute('href', $rep)
+        [void]$a.setAttribute('target','_blank'); [void]$a.setAttribute('rel','noopener')
       }
     }
 
@@ -419,7 +421,7 @@ $imgSrcPattern = @'
       $pre = $m.Groups[1].Value; $url = $m.Groups[2].Value; $post = $m.Groups[3].Value
       if (-not (_Eligible $url $BaseUrl $OnlyIfHostMatches)) { return $m.Value }
       $norm = _NormalizeUrl -Raw $url -Base $BaseUrl
-      $fn   = [IO.Path]::GetFileName(($norm ?? $url) -split '[?#]',2)[0]
+      $fn   = [IO.Path]::GetFileName((($norm ?? $url) -split '[?#]',2)[0])
       $rep  = $Lookup[$norm] ?? $Lookup[$fn]
       if ($rep) {
         if ($KeepOriginals) { return "$pre$rep$post".Replace('>', " data-original-src=""$url"">") }
@@ -430,7 +432,7 @@ $imgSrcPattern = @'
 
     # IMG srcset
 $srcsetPat = @'
-'(?is)(<img\b[^>]*\bsrcset\s*=\s*["''])([^"']+)(["''])'
+(?is)(<img\b[^>]*\bsrcset\s*=\s*["'])([^"']+)(["'])
 '@
     $html = [regex]::Replace($html, $srcsetPat, {
       param($m)
@@ -443,14 +445,14 @@ $srcsetPat = @'
     # <a href>
 
 $anchorpat = @'
-'(?is)(<a\b[^>]*\bhref\s*=\s*["'']?)([^"'\s>]+)([^>]*>)'
+(?is)(<a\b[^>]*\bhref\s*=\s*["']?)([^"'\s>]+)([^>]*>)
 '@
     $html = [regex]::Replace($html, $anchorpat, {
       param($m)
       $pre=$m.Groups[1].Value; $url=$m.Groups[2].Value; $post=$m.Groups[3].Value
       if (-not (_Eligible $url $BaseUrl $OnlyIfHostMatches)) { return $m.Value }
       $norm=_NormalizeUrl -Raw $url -Base $BaseUrl
-      $fn  = [IO.Path]::GetFileName(($norm ?? $url) -split '[?#]',2)[0]
+      $fn  = [IO.Path]::GetFileName((($norm ?? $url) -split '[?#]',2)[0])
       $rep = $Lookup[$norm] ?? $Lookup[$fn]
       if ($rep) {
         $postFixed = if ($post -notmatch '(?i)\btarget=') { $post -replace '>$',' target="_blank" rel="noopener">' } else { $post }

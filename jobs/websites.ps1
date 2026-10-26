@@ -82,7 +82,8 @@ if ($itboostdata.ContainsKey('ssl-certificates') -and $ITBoostData.'ssl-certific
         if ([string]::IsNullOrEmpty($_.organization)) {
             $company = Get-HuduCompanies -id $internalCompanyId; $company = $company.company ?? $company;
         } else {
-            $company = Get-HuduCompanies -name $_.organization; $company = $company.company ?? $company;
+            $company = Get-HuduCompanyFromName -CompanyName $_.organization -HuduCompanies $huduCompanies -existingIndex $ITBoostData.organizations.matches
+            $company = $company.company ?? $company
         }
         $ws = $null
         $existing = get-huduwebsites -name "https://$($_.host)" | where-object { $_.company_id -eq $company.id } | Select-Object -first 1
@@ -126,9 +127,9 @@ $domainMatches = @()
 if ($ITBoostData.ContainsKey('domains')){
     $domainMatches = @($ITBoostData.domains["matches"] ?? @())
 }
-ConvertTo-Json -InputObject $($domainMatches ?? @()) -Depth 99 | out-file $($(join-path $debug_folder -ChildPath "Matched-websites.json")) -Force
+Export-MigrationJson -InputObject $domainMatches -LiteralPath (Join-Path $debug_folder 'Matched-websites.json')
 $sslCertificateMatches = @()
 if ($ITBoostData.ContainsKey('ssl-certificates')){
     $sslCertificateMatches = @($ITBoostData.'ssl-certificates'["matches"] ?? @())
 }
-ConvertTo-Json -InputObject $($sslCertificateMatches ?? @()) -Depth 99 | out-file $($(join-path $debug_folder -ChildPath "Matched-ssl.json")) -Force
+Export-MigrationJson -InputObject $sslCertificateMatches -LiteralPath (Join-Path $debug_folder 'Matched-ssl.json')
