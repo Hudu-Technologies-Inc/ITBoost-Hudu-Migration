@@ -1480,7 +1480,7 @@ function Find-RowValueByLabel {
             }
         }
     }
-    $candidates | ConvertTo-json -depth 55 | out-file $(join-path $debug_folder "$($Row.id)-$($TargetLabel).json")
+    Export-MigrationJson -InputObject @($candidates) -LiteralPath (Join-Path $debug_folder "$($Row.id)-$TargetLabel.json") -Depth 55
 
     if ($ReturnCandidate) { return $candidates[0] }
     return $candidates[0].Value

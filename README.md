@@ -176,6 +176,16 @@ It will surely get easier in the future with some automatic parsing stuff, but f
 
 Entities that are created and/or matched will have a JSON file dumped out in your debug folder, which will be in the project directory. These files can be huge, but are best to be saved, since they can prove useful in case something goes south.
 
+You can set `$debug_folder` in your environment file to choose another output directory. The script creates and checks the debug and conversion directories before starting migration jobs. If `$TMPbasedir` is unset, conversion files use `ITBoost-Hudu-Migration` under the Windows temporary directory. Relative paths are resolved at startup so later location changes do not redirect output.
+
+Each JSON export recreates its parent directory if needed and writes UTF-8 JSON to a temporary file beside the destination before replacing it. Existing output is preserved if serialization or writing fails. Match files always contain JSON arrays, including `[]` when no matches were collected. Embedded password exports retain their object structure.
+
+A JSON export failure stops the migration and records the failed job in `$ITBoostData.ErrorsEncountered`; it is not added to `$ITBoostData.CompletedJobs`. Current results remain in `$ITBoostData` in your dot-sourced session. Once the path or permissions issue is fixed, you can save those results without repeating API changes. For example, to save company matches:
+
+```powershell
+Export-MigrationJson -InputObject @($ITBoostData.organizations['matches'] ?? @()) -LiteralPath $companiesIndex
+```
+
 Your logged files will vary in name based on which layouts you have in ITBoost and which ones have already been processed. They won't be unlike the picture, below, however.
 
 <img width="531" height="420" alt="image" src="https://github.com/user-attachments/assets/bb6ec397-993e-4d4c-920d-976637d4dae6" />

@@ -7,12 +7,12 @@ if ($MyInvocation.InvocationName -eq '.') {
 }
 $availableJobs = @(
 "read-csvs",
-"companies",
-"locations",
-"contacts",
-"websites",
-"configs",
-"expand-configs",
+# "companies",
+# "locations",
+# "contacts",
+# "websites",
+# "configs",
+# "expand-configs"
 "passwords",
 "documents",
 "runbooks",
@@ -20,10 +20,10 @@ $availableJobs = @(
 "gallery"
 )
 
-$toolsPath = resolve-path .\tools\
+$toolsPath = Resolve-Path -LiteralPath (Join-Path $PSScriptRoot 'tools') -ErrorAction Stop
 $project_workdir=$PSScriptRoot
-$debug_folder=$debug_folder ?? $(join-path "$project_workdir" "debug")
-$companiesIndex =  $(join-path $debug_folder -ChildPath "MatchedCompanies.json")
+if ([string]::IsNullOrWhiteSpace($debug_folder)) { $debug_folder = Join-Path $project_workdir 'debug' }
+if ([string]::IsNullOrWhiteSpace($TMPbasedir)) { $TMPbasedir = Join-Path ([IO.Path]::GetTempPath()) 'ITBoost-Hudu-Migration' }
 try {$migrationRecord = Set-MigrationRecord} catch {}
 $UseSimpleMap = $true
 $SkipInactive = $SkipInactive ?? $true
@@ -37,11 +37,14 @@ while (-not $(test-path $ITBoostExportPath)){
 }
 
 # init 
-foreach ($file in $(Get-ChildItem -Path ".\helpers" -Filter "*.ps1" -File | Sort-Object Name)) {
+foreach ($file in $(Get-ChildItem -LiteralPath (Join-Path $project_workdir 'helpers') -Filter "*.ps1" -File -ErrorAction Stop | Sort-Object Name)) {
     Write-Host "Importing: $($file.Name)" -ForegroundColor DarkBlue
     . $file.FullName
 }
-foreach ($requiredpath in @($TMPbasedir, $debug_folder)){Get-EnsuredPath -path $requiredpath}
+# Fail before migration jobs if results or conversion files cannot be saved.
+$debug_folder = Initialize-MigrationOutputDirectory -Path $debug_folder
+$TMPbasedir = Initialize-MigrationOutputDirectory -Path $TMPbasedir
+$companiesIndex = Join-Path $debug_folder 'MatchedCompanies.json'
 Get-PSVersionCompatible; Set-HuduModuleInitialized -HuduBaseURL $HuduBaseURL -HuduAPIKey $HuduAPIKey;
 $currentVersionResult = $($currentVersionResult ?? $([version]((get-huduappinfo).version))); $MinAllowedVersion = ([version]"2.46.0"); $DisallowedVersions = @([version]("2.37.0")); if ($currentVersionResult -lt $MinAllowedVersion){Write-Host "Sorry, your Hudu version $currentVersionResult is not supported. You'll need to upgrade to $($MinAllowedVersion) in order to continue."; exit 1;}; if ($DisallowedVersions -contains [version]($currentVersionResult)) {write-host "disallowed version $($currentVersionResult); Please upgrade or downgrade if possible first." -ForegroundColor Red; exit 1;};
 if ($null -eq $UseSimpleMap){$UseSimpleMap = $true}
@@ -51,7 +54,7 @@ if ($true -eq $mergeOnMatch){$preferOrginal = $preferOrginal ?? $(select-objectf
 $skiponmatch = (-not $mergeOnMatch)
 
 
-. .\jobs\get-hududata.ps1
+. (Join-Path $project_workdir 'jobs/get-hududata.ps1')
 
 if ($null -eq $kbsEnabled -or $false -eq $kbsEnabled.CompanyKB -or $false -eq $kbsEnabled.CentralKB) {
     write-warning "in order to proceed, you need to enable both the CompanyKB and CentralKB features in Hudu."; exit 1;
@@ -76,29 +79,52 @@ $ITBoostData=@{
     ErrorsEncountered=@()
 }
 
-$jobsToRun = $availableJobs
+# Discovery and company creation are prerequisites, including when selected jobs are being rerun.
+$jobsToRun = @('read-csvs', 'companies') + @($availableJobs | Where-Object { $_ -notin @('read-csvs', 'companies') })
 
 foreach ($job in $jobsToRun){
-    $ITBoostData.JobState = @{Status="$job"; StartedAt=$(Get-Date); FinishedAt=$null}
+    $ITBoostData.JobState = @{Status="$job"; Outcome='Running'; StartedAt=$(Get-Date); FinishedAt=$null}
     write-host "Starting $($ITBoostdata.JobState.Status) at $($ITBoostdata.JobState.StartedAt)"
-    . ".\jobs\$job.ps1"
-    $ITBoostData.FinishedAt=$(Get-Date)
-    Write-Host "$($ITBoostData.JobState.Status) Completed"; $ITBoostData.CompletedJobs+=$ITBoostData.JobState;
+    try {
+        . (Join-Path $project_workdir "jobs/$job.ps1")
+        $ITBoostData.JobState.FinishedAt = Get-Date
+        $ITBoostData.JobState.Outcome = 'Completed'
+        $ITBoostData.CompletedJobs += $ITBoostData.JobState
+        Write-Host "$($ITBoostData.JobState.Status) Completed"
+    } catch {
+        $ITBoostData.JobState.FinishedAt = Get-Date
+        $ITBoostData.JobState.Outcome = 'Failed'
+        $ITBoostData.JobState.Error = $_.Exception.Message
+        $ITBoostData.ErrorsEncountered += $ITBoostData.JobState
+        Write-Warning "$($ITBoostData.JobState.Status) failed. Migration stopped; current results remain in `$ITBoostData."
+        throw
+    }
 }
 $flexiLayoutsCompleted = $false
 $flexIdx = 0
 while ($false -eq $flexiLayoutsCompleted){
     $flexIdx++
     write-host "Starting flexible asset layouts round ($flexIdx) (optional, but reccomended)"
-    $ITBoostData.JobState = @{Status="flexi-round-$flexIdx"; StartedAt=$(Get-Date); FinishedAt=$null}
     if ("yes" -ieq $(select-objectfromlist -objects @("yes","No") -message "do you wish to process flexible layouts round-$flexIdx now? (select 1/yes or 2/no)")){
-        . .\jobs\flexi-layout.ps1
+        $ITBoostData.JobState = @{Status="flexi-round-$flexIdx"; Outcome='Running'; StartedAt=$(Get-Date); FinishedAt=$null}
+        try {
+            . (Join-Path $project_workdir 'jobs/flexi-layout.ps1')
+            $ITBoostData.JobState.FinishedAt = Get-Date
+            $ITBoostData.JobState.Outcome = 'Completed'
+            $ITBoostData.CompletedJobs += $ITBoostData.JobState
+            Write-Host "$($ITBoostData.JobState.Status) Completed"
+        } catch {
+            $ITBoostData.JobState.FinishedAt = Get-Date
+            $ITBoostData.JobState.Outcome = 'Failed'
+            $ITBoostData.JobState.Error = $_.Exception.Message
+            $ITBoostData.ErrorsEncountered += $ITBoostData.JobState
+            Write-Warning "$($ITBoostData.JobState.Status) failed. Migration stopped; current results remain in `$ITBoostData."
+            throw
+        }
     } else {
         $flexiLayoutsCompleted=$true
     }
-    $ITBoostData.FinishedAt=$(Get-Date)
-    Write-Host "$($ITBoostData.JobState.Status) Completed"; $ITBoostData.CompletedJobs+=$ITBoostData.JobState;
 }
 Write-Host "Wrapping Up"
-. .\jobs\wrap-up.ps1
-. .\jobs\relate-all.ps1
+. (Join-Path $project_workdir 'jobs/wrap-up.ps1')
+. (Join-Path $project_workdir 'jobs/relate-all.ps1')

@@ -70,4 +70,4 @@ foreach ($galleryitem in $ITBoostData.gallery.CSVData) {
 
 }
 
-$galleryItems | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "GalleryItems.json")) -Force
+Export-MigrationJson -InputObject @($galleryItems ?? @()) -LiteralPath (Join-Path $debug_folder 'GalleryItems.json')

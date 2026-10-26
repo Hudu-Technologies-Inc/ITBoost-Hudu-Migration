@@ -558,5 +558,5 @@ foreach ($company in $groupeddocuments.Keys) {
         }
     }
 }
-($ITBoostData.documents["matches"] ?? @()) | convertto-json -depth 99 | out-file $($(join-path $debug_folder -ChildPath "MatchedDocuments.json")) -Force
+Export-MigrationJson -InputObject @($ITBoostData.documents["matches"] ?? @()) -LiteralPath (Join-Path $debug_folder 'MatchedDocuments.json')
     
