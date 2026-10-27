@@ -22,9 +22,6 @@ Easy Migration from ITBoost to Hudu
 
 ## Getting Started
 
-You'll need just a few items to start
-CSV headers are repaired during import without modifying your export files. The first column keeps its name; repeated columns receive suffixes such as `model_2` or `password_2`. Existing suffixed names are reserved to prevent collisions. Blank headers receive names such as `Column6`, and leading/trailing header whitespace is trimmed. `ImportedCsvHeaders.json` in your debug directory records the original and imported names for every column. Update any custom mappings that depended on your previous manual column renames.
-
 Company discovery uses organization names across all entity CSVs, including subsystem fields such as `CompanyName`, before any dependent migration jobs run. Names are trimmed, whitespace is collapsed, Unicode is normalized, and names are title-cased and deduplicated. This also title-cases acronyms, for example `ICU` becomes `Icu`. Punctuation and legal suffixes are retained. Existing Hudu company names are not renamed.
 
 Original aliases, organization IDs, and metadata are retained. Companies mentioned only in contacts, configurations or other CSVs are created with their discovered name. Explicitly inactive organizations still respect `$SkipInactive`. If a company cannot be created or its name matches multiple Hudu company IDs, migration stops before dependent jobs. `DiscoveredOrganizations.json` lists the names, aliases and source files for review.
@@ -159,6 +156,8 @@ This job can be ran as many times as needed until every entity is taken care of 
 When starting, you'll be asked to select a non-core CSV entity from your $ITBoostdata object.
 The properties from your selected CSV will be enumerated in a 'suggested' asset layout, which is placed in the main project directory.
 
+Generated layouts and field maps skip `CsvRow`, `id`, `ITBNotes`, `organization`, `password`, `resource_id`, `resource_type`, and `SourceFile`. New layouts always include one `Notes` field with type `RichText` and `show_in_list = $false`. Both new-layout and existing-layout templates default to joining `Notes` and `ITBNotes` into `Notes`; when using an existing layout, ensure it has that destination field.
+
 This part is pretty easy once you get the hang of it, but could seem daunting at first. Not to worry- 
 
 Your template file will be named after the entry you have chosen and will end with ".ps1", as it contains the definitions we need.
@@ -177,6 +176,8 @@ First, is the FlexiFields object- these are the fields that are going to be plac
 
 - If you have a FontAwesome Icon in mind that you'd like to use, you can place that as a string under variable for $GivenIcon variable. The icon will be guessed if this isnt set, so no trouble there.
 - If you change the name of the label in $flexifields map, you'll want to update the right-hand label in the corresponding $flexismap to reflect your label change
+- Set `$nameField` to a source field name or an ordered array, such as `$nameField = @("Printer Model", "Serial Number", "Hostname")`. The first non-blank value names the asset and is used to match existing Hudu assets. Spaces and underscores in source field names are interchangeable. If all configured fields are blank or missing, the job tries `name`, `path`, `host`, and `share_name`, then uses `Unnamed <layout>`.
+- Every source field is automatically checked for a JSON object with a non-null `value` property. For example, `{"value":"LaserJet","id":123}` becomes `LaserJet` before grouping, naming, mapping, notes, and linking. Empty strings, `0`, and `false` are valid decoded values. Plain content, malformed JSON, JSON without a `value` property, and null `value` properties retain their original content. Original CSV rows are preserved. `$jsonSourceFields` remains available for additional decoding, such as extracting a `text` property.
 - If you want to join multiple fields into a single field (usually as RichText), you can add these fields to $SmooshLabels array. Anything included in the Smooshlabels array will be joined together in Field - Value format in a pseudo-table within the target field you wish to use. So, for example, if you want to join, "Notes","Root user","general access user" fields into a single richtext field in Hudu, you'd do something like this, below
 <img width="550" height="67" alt="image" src="https://github.com/user-attachments/assets/50391610-0c22-43bb-88ab-33e8cccc4553" />
 
