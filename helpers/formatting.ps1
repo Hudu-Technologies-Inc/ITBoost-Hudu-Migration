@@ -749,7 +749,9 @@ function Get-CSVProperties {
 }
 function New-GeneratedTemplateFromFlexiHeaders {
     param ([array]$ITboostdata, [string]$FlexiLayoutName, [string]$outFile)
-    $flexiProps = Get-CSVProperties $ITboostdata.$FlexiLayoutName.CSVData
+    $excludedProperties = @('CsvRow', 'id', 'ITBNotes', 'organization', 'password', 'resource_id', 'resource_type', 'SourceFile')
+    $flexiProps = Get-CSVProperties $ITboostdata.$FlexiLayoutName.CSVData |
+        Where-Object { $_ -notin $excludedProperties }
 
     $flexiFieldsLines = @()
     $flexisMapLines   = @()
@@ -757,17 +759,23 @@ function New-GeneratedTemplateFromFlexiHeaders {
     $idx = 0
 
     foreach ($prop in $flexiProps) {
-        $idx++
         $label = ($prop -replace '_', ' ')
         $escapedLabel = $label -replace "'", "''"
         $escapedProp  = $prop  -replace "'", "''"
 
-        $flexiFieldsLines +=
-            "    @{label = '$escapedLabel'; field_type = 'Text'; show_in_list = 'false'; position = $idx; required = 'false'; hint = '$escapedProp from script'}"
+        if ($prop -ine 'Notes') {
+            $idx++
+            $flexiFieldsLines +=
+                "    @{label = '$escapedLabel'; field_type = 'Text'; show_in_list = 'false'; position = $idx; required = 'false'; hint = '$escapedProp from script'}"
+        }
 
         $flexisMapLines +=
             "    '$($escapedProp -replace " ","_")' = '$escapedLabel'"
     }
+
+    $idx++
+    $flexiFieldsLines +=
+        "    @{label = 'Notes'; field_type = 'RichText'; show_in_list = `$false; position = $idx; required = `$false; hint = 'Combined Notes and ITBNotes'}"
 
 $TemplateOutput = @"
 `$flexiFields = @(
@@ -779,8 +787,8 @@ $($flexisMapLines -join "`n")
 }
 "@ + @'
 # smoosh source label items to destination smooshable
-$smooshLabels = @()
-$smooshToDestinationLabel = $null
+$smooshLabels = @("Notes","ITBNotes")
+$smooshToDestinationLabel = "Notes"
 # JSON value wrappers are decoded automatically for every source field.
 # List fields here only for additional decoding, such as JSON text properties.
 $jsonSourceFields = @()
@@ -803,7 +811,9 @@ $LinkAsPasswords = @();
 function New-GeneratedTemplateFromHuduLayout {
     param ([pscustomobject]$HuduLayout, [hashtable]$ITboostdata, [string]$SourceProperty, [string]$outFile)
     $HuduLayout = $HuduLayout.asset_layout ?? $HuduLayout
-    $flexiProps = Get-CSVProperties $ITboostdata.$SourceProperty.CSVData
+    $excludedProperties = @('CsvRow', 'id', 'ITBNotes', 'organization', 'password', 'resource_id', 'resource_type', 'SourceFile')
+    $flexiProps = Get-CSVProperties $ITboostdata.$SourceProperty.CSVData |
+        Where-Object { $_ -notin $excludedProperties }
 
     $HuduFields = $HuduLayout.fields
 
@@ -834,8 +844,8 @@ $($flexisMapLines -join "`n")
 }
 "@ + @'
 # smoosh source label items to destination smooshable
-$smooshLabels = @()
-$smooshToDestinationLabel = $null
+$smooshLabels = @("Notes","ITBNotes")
+$smooshToDestinationLabel = "Notes"
 # JSON value wrappers are decoded automatically for every source field.
 # List fields here only for additional decoding, such as JSON text properties.
 $jsonSourceFields = @()

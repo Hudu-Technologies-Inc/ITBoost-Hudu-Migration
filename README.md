@@ -156,6 +156,8 @@ This job can be ran as many times as needed until every entity is taken care of 
 When starting, you'll be asked to select a non-core CSV entity from your $ITBoostdata object.
 The properties from your selected CSV will be enumerated in a 'suggested' asset layout, which is placed in the main project directory.
 
+Generated layouts and field maps skip `CsvRow`, `id`, `ITBNotes`, `organization`, `password`, `resource_id`, `resource_type`, and `SourceFile`. New layouts always include one `Notes` field with type `RichText` and `show_in_list = $false`. Both new-layout and existing-layout templates default to joining `Notes` and `ITBNotes` into `Notes`; when using an existing layout, ensure it has that destination field.
+
 This part is pretty easy once you get the hang of it, but could seem daunting at first. Not to worry- 
 
 Your template file will be named after the entry you have chosen and will end with ".ps1", as it contains the definitions we need.
