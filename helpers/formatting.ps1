@@ -147,6 +147,56 @@ function Get-ValueFromCSVKeyVariants {
     return $prop.Value
 }
 
+function Get-FlexiFieldValue {
+    param([AllowNull()][object]$Value)
+
+    # JSON scalars and arrays cannot have their own value property.
+    if ($Value -is [System.Collections.IList] -or
+        ($Value -is [string] -and -not $Value.TrimStart().StartsWith('{'))) {
+        return ,$Value
+    }
+
+    $decoded = SafeDecode -InputObject $Value
+    $decodedValue = $null
+    if ($decoded -is [System.Collections.IDictionary]) {
+        $decodedValue = $decoded['value']
+    } elseif ($decoded -is [pscustomobject]) {
+        $valueProperty = $decoded.PSObject.Properties['value']
+        if ($null -ne $valueProperty) { $decodedValue = $valueProperty.Value }
+    }
+
+    if ($null -ne $decodedValue) { return ,$decodedValue }
+    return ,$Value
+}
+
+function Get-FlexiAssetName {
+    param(
+        [pscustomobject]$Row,
+        [string[]]$NameFields = @('Name'),
+        [string[]]$JsonSourceFields = @(),
+        [string]$SourceProperty
+    )
+
+    $jsonLabels = @($JsonSourceFields | ForEach-Object { $_ -replace '_', ' ' })
+    foreach ($label in (@($NameFields) + @('name', 'path', 'host', 'share_name'))) {
+        if ([string]::IsNullOrWhiteSpace($label)) { continue }
+
+        $value = Get-ValueFromCSVKeyVariants -Row $Row -Label $label
+        if ($jsonLabels -contains ($label -replace '_', ' ')) {
+            $value = SafeDecode $value
+            if ($value -is [System.Collections.IDictionary] -or $value -is [pscustomobject]) {
+                $value = $value.value ?? $value.text
+            }
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace([string]$value)) {
+            return [string]$value
+        }
+    }
+
+    return "Unnamed $SourceProperty"
+}
+
 function Convert-FieldArrayToMap {
     param([Parameter(Mandatory)][object[]]$FieldArray)
 
@@ -731,8 +781,12 @@ $($flexisMapLines -join "`n")
 # smoosh source label items to destination smooshable
 $smooshLabels = @()
 $smooshToDestinationLabel = $null
+# JSON value wrappers are decoded automatically for every source field.
+# List fields here only for additional decoding, such as JSON text properties.
 $jsonSourceFields = @()
-$nameField = "Name"
+# Try source fields in order; the first non-blank value becomes the asset name.
+# Example: $nameField = @("Printer Model", "Serial Number", "Hostname")
+$nameField = @("Name")
 $createNewItemsForLists=$false
 $givenICon = $null; $PasswordsFields = @(); $contstants = @(); $listMaps = @{};
 # relation to doc
@@ -782,8 +836,12 @@ $($flexisMapLines -join "`n")
 # smoosh source label items to destination smooshable
 $smooshLabels = @()
 $smooshToDestinationLabel = $null
+# JSON value wrappers are decoded automatically for every source field.
+# List fields here only for additional decoding, such as JSON text properties.
 $jsonSourceFields = @()
-$nameField = "Name"
+# Try source fields in order; the first non-blank value becomes the asset name.
+# Example: $nameField = @("Printer Model", "Serial Number", "Hostname")
+$nameField = @("Name")
 $createNewItemsForLists=$false
 $givenICon = $null; $PasswordsFields = @(); $contstants = @(); $listMaps = @{};
 # relation to doc

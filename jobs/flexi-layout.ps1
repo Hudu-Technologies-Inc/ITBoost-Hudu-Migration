@@ -100,7 +100,14 @@ foreach ($listField in $ListFields){
 $SmooshFieldIsRichTExt = [bool]$(($flexisFields | Where-Object { $_.label -eq $($smooshToDestinationLabel) } | Select-Object -First 1).field_type -ieq "RichText") ?? $true
 Write-Host "Smooshable dest is $(if ($true -eq $SmooshFieldIsRichTExt) {"RichText"} else {"Text"})"
 
-$groupedflexis = $ITBoostData.$sourceProperty.CSVData | Group-ObjectSafeHashTable { $_.organization }  -BlankKey "$internalCompanyName"
+# Decode value wrappers on working copies so every consumer sees the same values.
+$groupedflexis = $ITBoostData.$sourceProperty.CSVData | ForEach-Object {
+    $decodedRow = [ordered]@{}
+    foreach ($property in $_.PSObject.Properties) {
+        $decodedRow[$property.Name] = Get-FlexiFieldValue -Value $property.Value
+    }
+    [pscustomobject]$decodedRow
+} | Group-ObjectSafeHashTable { $_.organization } -BlankKey "$internalCompanyName"
 
 try {
     $allHuduflexis = Get-HuduAssets -AssetLayoutId $flexisLayout.id
@@ -115,17 +122,7 @@ foreach ($company in $groupedflexis.Keys) {
     
     if (-not $matchedCompany -or -not $matchedCompany.id -or $matchedCompany.id -lt 1) { write-host "No matched company"; continue; }
     foreach ($companyflexi in $flexisForCompany){
-        $matchedflexi = Get-HuduAssets -AssetLayoutId $flexisLayout.id -CompanyId $matchedCompany.id -Name $($companyflexi.$nameField ?? $companyFlexi.name) | Select-Object -First 1
-    
-        $GivenName = $null
-        $AltLabel = $nameField -replace "_"," "                
-        $GivenName = $($companyflexi.$nameField ?? $companyflexi.$AltLabel ?? $companyflexi.name)
-        if ($jsonSourceFields -contains $nameField.ToLowerInvariant()) {
-            $GivenName = SafeDecode $GivenName
-            $GivenName = $GivenName.value ?? $GivenName.text ?? $GivenName
-        }
-        $GivenName = $(if ([string]::IsNullOrWhiteSpace($GivenName)) { $($companyflexi.path ?? $companyflexi.host ?? $companyflexi.share_name) } else { $GivenName })
-        $GivenName = $(if ([string]::IsNullOrWhiteSpace($GivenName)) { "Unnamed $sourceProperty" } else { $GivenName })
+        $GivenName = Get-FlexiAssetName -Row $companyflexi -NameFields $nameField -JsonSourceFields $jsonSourceFields -SourceProperty $sourceProperty
         $matchedflexi = Get-HuduAssets -AssetLayoutId $flexisLayout.id -CompanyId $matchedCompany.id -Name $GivenName | Select-Object -First 1                
         if ($matchedflexi){
                     $ITBoostData.$sourceProperty['matches'] += @{
@@ -287,7 +284,7 @@ foreach ($company in $groupedflexis.Keys) {
         # Link documents
         foreach ($doc in $DocFields){
             $DocName = Safedecode $companyflexi.$doc
-            $DocName = $DocName.name ?? $DocName.value ?? $null
+            $DocName = $DocName.name ?? $DocName.value ?? $DocName
             if ([string]::IsNullOrWhiteSpace($DocName)){continue}
             $article = $null
             $article = Get-HuduArticles -CompanyId $matchedCompany.id -name $DocName | Select-Object -first 1
@@ -303,7 +300,7 @@ foreach ($company in $groupedflexis.Keys) {
         # link related assets
         foreach ($related in $RelateditemFields) {
             $itemName = Safedecode $companyflexi.$related
-            $itemName = $itemName.name ?? $itemName.value ?? $null
+            $itemName = $itemName.name ?? $itemName.value ?? $itemName
             if ([string]::IsNullOrWhiteSpace($itemName)){continue}
             $asset = $null
             $related = Get-HuduAssets -CompanyId $matchedCompany.id -name $itemName | where-object {$_.id -ne $newFlexi.id}
